@@ -132,6 +132,6 @@ Examples are loaded from `EXAMPLE_LIBRARY` in config when required.
 
 1. Create DB schema from `create_prompt_benchmark_schema.sql`
 2. Insert rows into `tasks`, `prompt_strategies`, `models`
-3. Ensure Ollama model exists locally
+3. Ensure Ollama model exists locally by using `ollama pull <model_name>`
 4. Set DB constants in `config/config.py`
 5. Run `python benchmarking_backend/main.py`
