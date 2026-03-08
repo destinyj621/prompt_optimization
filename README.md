@@ -1,57 +1,66 @@
-# Prompt Optimization and Sustainability Benchmarking
+# Prompt Benchmarking System
 
-Python backend for benchmarking prompt strategies against local LLMs via Ollama, with run-level metrics stored in MySQL.
+End-to-end Streamlit + Python backend system for benchmarking prompt strategies on local LLMs (Ollama) with experiment metrics stored in MySQL.
 
-## What This Project Does
+## What It Does
 
-The system runs controlled experiments where you select:
+You can run experiments by selecting:
 
-- `task_id`
-- `strategy_id`
-- `model_id`
-- `trials_per_input` (minimum 3)
+- Task
+- Prompt strategy
+- Model
+- Dataset input (existing) or raw input text
+- Number of runs (`>= 1`)
 
-Then it:
+For each run, the system:
 
-1. Takes a user prompt from CLI
-2. Inserts it into `dataset_inputs`
-3. Builds final prompt text using the selected strategy
-4. Runs the model through `ollama run <model_name>` for each trial
-5. Records per-run metrics into `experiment_runs`
+1. Builds the final prompt from the strategy template + input
+2. Executes the selected model with Ollama
+3. Measures latency and token usage
+4. Computes throughput, energy, and evaluation metrics
+5. Stores a full run record in MySQL
+6. Displays run-level results and summary in the UI
 
-## Tech Stack
+## Required Services
 
-- Python 3
-- MySQL (`mysql-connector-python`)
-- Ollama (local model execution via `subprocess`)
+## 1) MySQL must be running and reachable
 
-## Project Structure
+The app reads/writes from MySQL on every page load and run.
 
-```text
-benchmarking_backend/
-  main.py
-  database_manager.py
-  experiment_runner.py
-  metrics.py
-  model_executor.py
-  prompt_builder.py
-  report_generator.py
-  stability.py
-  config/
-    config.py
+Connection settings are in:
+
+- `benchmarking_backend/config/settings.json` under `database`
+
+Default values:
+
+- host: `localhost`
+- port: `3306`
+- user: `root`
+- password: `destiny`
+- database: `prompt_benchmark`
+
+If MySQL is not running or credentials are wrong, UI pages will show connection errors.
+
+## 2) Ollama must be running with required models available
+
+Configured model list (auto-synced into `models` table):
+
+- `llama3.1:8b`
+- `mistral`
+- `gemma:7b`
+- `phi3`
+- `llama3.1:3b`
+
+Make sure they exist locally:
+
+```powershell
+ollama list
+ollama pull llama3.1:8b
+ollama pull mistral
+ollama pull gemma:7b
+ollama pull phi3
+ollama pull llama3.1:3b
 ```
-
-## Database Tables Used
-
-- `tasks`
-- `prompt_strategies`
-- `models`
-- `dataset_inputs`
-- `experiment_runs`
-
-Schema file:
-
-- `create_prompt_benchmark_schema.sql`
 
 ## Install
 
@@ -61,77 +70,83 @@ From repo root:
 python -m pip install -r requirements.txt
 ```
 
-## Configuration
+## Configure
 
-All constants are in:
+All runtime configuration is in:
 
-- `benchmarking_backend/config/config.py`
+- `benchmarking_backend/config/settings.json`
 
-This includes:
+Includes:
 
-- DB connection constants (`DB_HOST`, `DB_USER`, etc.)
-- generation defaults (`DEFAULT_TEMPERATURE`, `DEFAULT_TOP_P`, `DEFAULT_MAX_TOKENS`)
-- sustainability constants (`GPU_POWER_WATTS`, etc.)
-- example library (`EXAMPLE_LIBRARY`)
+- DB connection
+- energy/hardware assumptions
+- benchmark defaults
+- model defaults and token limits
+- available model names
 
-## Run
+## Database Schema
+
+Schema file:
+
+- `create_prompt_benchmark_schema.sql`
+
+The backend initializes schema at runtime and uses these main tables:
+
+- `tasks`
+- `prompt_strategies`
+- `dataset_inputs`
+- `models`
+- `run_times`
+- `experiment_runs`
+
+## Run the App
 
 From repo root:
 
 ```powershell
-cd benchmarking_backend
-python main.py
+streamlit run UI/app.py
 ```
 
-CLI flow:
+Then open the Streamlit URL (usually `http://localhost:8501`).
 
-1. Shows available tasks, strategies, models
-2. Prompts for:
-   - `task_id`
-   - `strategy_id`
-   - `model_id`
-   - `input prompt`
-   - `number of trials (minimum 3)`
-3. Runs experiment and prints summary
-4. Inserts each run into `experiment_runs`
+## UI Flow
 
-## Prompt Strategy Behavior
+1. Open **Experiment Setup**
+2. Select task, strategy, and model
+3. Choose existing dataset input or enter raw input
+4. Set **Number of Runs** (`>= 1`)
+5. Click **Run Experiment**
+6. Review detailed metrics in **Results & Comparison**
+7. View historical runs in **Recent Runs**
 
-Prompt construction is handled in:
+## Metrics Stored per Run
 
-- `benchmarking_backend/prompt_builder.py`
+Stored in `experiment_runs`:
 
-Supported strategy patterns:
-
-- baseline / zero-shot
-- few-shot
-- chain-of-thought / reasoning
-- role prompting
-- format constrained / structured
-
-Examples are loaded from `EXAMPLE_LIBRARY` in config when required.
-
-## Metrics Collected Per Run
-
-- `prompt_tokens`
-- `completion_tokens`
-- `total_tokens`
+- `task_id`, `strategy_id`, `model_id`, `input_id`, `time_id`
+- `input_prompt`, `output_text`
+- `prompt_tokens`, `completion_tokens`, `total_tokens`
 - `latency_ms`
-- `estimated_cost` (0 for local runs)
-- `energy_kwh`
-- `quality_score`
-- `output_text`
+- `throughput_tokens_per_sec`, `throughput_requests_per_sec`
+- `energy_kwh`, `energy_cost`, `hardware_cost`
+- `accuracy_percent`, `field_accuracy_percent`, `exact_record_match`, `schema_compliance_percent`, `quality_score`
 
-## Notes
+## Troubleshooting
 
-- Models run locally via `ollama run <model_name>`.
-- `model_name` must exist in `models` and be available in Ollama.
-- Current quality scoring is strict expected-output matching.
+- **Backend connection failed** in UI:
+  - Verify MySQL service is running
+  - Verify `settings.json` DB credentials
+  - Verify user has permission to create/use `prompt_benchmark`
+- **Model execution failed**:
+  - Verify Ollama is running
+  - Verify model name exists in `ollama list`
+- **No tasks/strategies in dropdowns**:
+  - Re-run schema SQL manually if needed, or check DB table contents
 
-## Quick Start Checklist
+## Optional CLI Entry
 
-1. Create DB schema from `create_prompt_benchmark_schema.sql`
-2. Insert rows into `tasks`, `prompt_strategies`, `models`
-3. Ensure Ollama model exists locally by using `ollama pull <model_name>`
-4. Set DB constants in `config/config.py`
-5. Run `python benchmarking_backend/main.py`
+You can still run the CLI flow:
+
+```powershell
+python benchmarking_backend/main.py
+```
