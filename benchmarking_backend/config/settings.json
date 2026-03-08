@@ -1,0 +1,103 @@
+{
+  "energy": {
+    "gpu_power_watts": 250.0,
+    "cpu_power_watts": 65.0,
+    "energy_cost_per_kwh": 0.12,
+    "hardware_hourly_cost": 1.5,
+    "carbon_kg_per_kwh": 0.4
+  },
+  "benchmark": {
+    "default_batch_size": 1,
+    "repetition_count": 3
+  },
+  "database": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "password": "destiny",
+    "name": "prompt_benchmark"
+  },
+  "models": {
+    "available_model_names": [
+      "llama3.1:8b",
+      "mistral",
+      "gemma:7b",
+      "phi3",
+      "llama3.1:3b"
+    ],
+    "defaults": {
+      "temperature": 0.2,
+      "top_p": 0.9,
+      "max_tokens": 256
+    },
+    "token_limits": {
+      "prompt_max_tokens": 4096,
+      "completion_max_tokens": 1024,
+      "total_max_tokens": 8192
+    },
+    "ollama": {
+      "base_url": "http://localhost:11434",
+      "command": "ollama"
+    }
+  },
+  "prompting": {
+    "example_required_task_keywords": [
+      "structured extraction",
+      "classification",
+      "reasoning"
+    ],
+    "example_required_strategy_types": [
+      "few-shot",
+      "format constrained",
+      "format-constrained",
+      "structured"
+    ],
+    "example_library": {
+      "few-shot": [
+        {
+          "example_input": "Text: Climate change is accelerating due to emissions.",
+          "example_output": "Summary: Climate change is worsening because of emissions.",
+          "example_order": 1
+        },
+        {
+          "example_input": "Text: Recycling reduces landfill waste and saves energy.",
+          "example_output": "Summary: Recycling lowers waste and conserves energy.",
+          "example_order": 2
+        }
+      ],
+      "format constrained": [
+        {
+          "example_input": "Review: The phone is fast but battery is average.",
+          "example_output": "{\"sentiment\":\"neutral\",\"pros\":[\"fast\"],\"cons\":[\"average battery\"]}",
+          "example_order": 1
+        }
+      ],
+      "structured extraction": [
+        {
+          "example_input": "Patient: John Doe, age 45, diagnosed with hypertension.",
+          "example_output": "{\"name\":\"John Doe\",\"age\":45,\"diagnosis\":\"hypertension\"}",
+          "example_order": 1
+        }
+      ],
+      "classification": [
+        {
+          "example_input": "Email: You won a free prize! Click now!",
+          "example_output": "Label: spam",
+          "example_order": 1
+        },
+        {
+          "example_input": "Email: Team meeting moved to 3 PM.",
+          "example_output": "Label: not_spam",
+          "example_order": 2
+        }
+      ],
+      "reasoning": [
+        {
+          "example_input": "If all A are B and all B are C, are all A C?",
+          "example_output": "Yes. Since A subset B and B subset C, A subset C.",
+          "example_order": 1
+        }
+      ]
+    }
+  }
+}

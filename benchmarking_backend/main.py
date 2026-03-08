@@ -1,34 +1,28 @@
-# Main entry point for the Prompt Optimization and Sustainability Benchmarking
+"""CLI entry point for prompt optimization benchmarking backend."""
+
+from __future__ import annotations
+
 from typing import Any, Dict, List
 
-from config.config import (
-    DEFAULT_MAX_TOKENS,
-    DEFAULT_TEMPERATURE,
-    DEFAULT_TOP_P,
-    EXAMPLE_LIBRARY,
-    EXAMPLE_REQUIRED_STRATEGY_TYPES,
-    EXAMPLE_REQUIRED_TASK_KEYWORDS,
-    GPU_POWER_WATTS,
-)
-from database_manager import DatabaseManager
-from experiment_runner import ExperimentRunner
-from metrics import MetricsCalculator
-from model_executor import ModelExecutor
-from prompt_builder import PromptBuilder
-from stability import ExperimentalControls
+from benchmarking_backend.config import CONFIG
+from benchmarking_backend.database import BenchmarkRepository
+from benchmarking_backend.database.schema import ensure_schema_compat, initialize_schema
+from benchmarking_backend.evaluation import AccuracyEvaluator
+from benchmarking_backend.experiments import ExperimentRunner, MetricCollector, ModelExecutor, PromptBuilder
 
 
-def _prompt_int(label: str) -> int:
-    """Reads a positive integer from stdin."""
+def _prompt_int(label: str, minimum: int = 1) -> int:
     while True:
-        raw_value = input(label).strip()
+        value = input(label).strip()
         try:
-            value = int(raw_value)
-            if value <= 0:
-                raise ValueError
-            return value
+            parsed = int(value)
         except ValueError:
-            print("Please enter a valid positive integer.")
+            print("Please enter a valid integer.")
+            continue
+        if parsed < minimum:
+            print(f"Please enter a value >= {minimum}.")
+            continue
+        return parsed
 
 
 def _prompt_non_empty(label: str) -> str:
@@ -36,52 +30,34 @@ def _prompt_non_empty(label: str) -> str:
         value = input(label).strip()
         if value:
             return value
-        print("Please enter a non-empty prompt.")
-
-
-def _prompt_trials_min_3(label: str) -> int:
-    while True:
-        value = _prompt_int(label)
-        if value >= 3:
-            return value
-        print("Please enter a value of at least 3.")
+        print("Value cannot be empty.")
 
 
 def _requires_examples(task_name: str, strategy_type: str) -> bool:
-    normalized_task_name = (task_name or "").strip().lower()
-    normalized_strategy_type = (strategy_type or "").strip().lower()
-
-    strategy_requires = normalized_strategy_type in EXAMPLE_REQUIRED_STRATEGY_TYPES
-    task_requires = any(keyword in normalized_task_name for keyword in EXAMPLE_REQUIRED_TASK_KEYWORDS)
+    task = task_name.strip().lower()
+    strategy = strategy_type.strip().lower()
+    strategy_requires = strategy in CONFIG.prompting.example_required_strategy_types
+    task_requires = any(keyword in task for keyword in CONFIG.prompting.example_required_task_keywords)
     return strategy_requires or task_requires
 
 
 def _prompt_required_examples(task_name: str, strategy_type: str) -> List[Dict[str, Any]]:
-    """Collects examples from CLI when the selected task/strategy requires it."""
     if not _requires_examples(task_name=task_name, strategy_type=strategy_type):
         return []
 
-    normalized_task_name = (task_name or "").strip().lower()
-    normalized_strategy_type = (strategy_type or "").strip().lower()
+    task = task_name.strip().lower()
+    strategy = strategy_type.strip().lower()
 
-    # Prefer config-defined examples first.
-    if normalized_strategy_type in EXAMPLE_LIBRARY:
-        print(f"Using configured examples for strategy_type='{normalized_strategy_type}'.")
-        return EXAMPLE_LIBRARY[normalized_strategy_type]
+    if strategy in CONFIG.prompting.example_library:
+        return CONFIG.prompting.example_library[strategy]
 
-    for keyword in EXAMPLE_REQUIRED_TASK_KEYWORDS:
-        if keyword in normalized_task_name and keyword in EXAMPLE_LIBRARY:
-            print(f"Using configured examples for task keyword='{keyword}'.")
-            return EXAMPLE_LIBRARY[keyword]
-
-    # Fallback to manual entry if no configured examples are available.
-    example_count = _prompt_int("Enter number of examples required for this task/strategy: ")
-    while example_count < 1:
-        print("Please enter at least 1 example.")
-        example_count = _prompt_int("Enter number of examples required for this task/strategy: ")
+    for keyword in CONFIG.prompting.example_required_task_keywords:
+        if keyword in task and keyword in CONFIG.prompting.example_library:
+            return CONFIG.prompting.example_library[keyword]
 
     examples: List[Dict[str, Any]] = []
-    for idx in range(1, example_count + 1):
+    count = _prompt_int("Enter number of examples: ", minimum=1)
+    for idx in range(1, count + 1):
         example_input = _prompt_non_empty(f"Example {idx} input: ")
         example_output = _prompt_non_empty(f"Example {idx} output: ")
         examples.append(
@@ -94,115 +70,95 @@ def _prompt_required_examples(task_name: str, strategy_type: str) -> List[Dict[s
     return examples
 
 
-def _print_available_options(db_manager: DatabaseManager) -> None:
-    """Displays available tasks, strategies, and models."""
-    tasks = db_manager.list_tasks()
-    strategies = db_manager.list_strategies()
-    models = db_manager.list_models()
-
+def _print_options(repo: BenchmarkRepository) -> None:
     print("\nAvailable Tasks")
-    for task in tasks:
+    for task in repo.list_tasks():
         print(f"{task['task_id']} - {task['task_name']}")
 
-    print("\nAvailable Prompt Strategies")
-    for strategy in strategies:
+    print("\nAvailable Strategies")
+    for strategy in repo.list_strategies():
         print(f"{strategy['strategy_id']} - {strategy['strategy_name']}")
 
     print("\nAvailable Models")
-    for model in models:
+    for model in repo.list_models():
         print(f"{model['model_id']} - {model['model_name']}")
 
 
-def _print_summary(summary: dict) -> None:
-    rows = [
-        ("Task", summary["task_name"]),
-        ("Strategy", summary["strategy_name"]),
-        ("Model", summary["model_name"]),
-        ("Total Runs", summary["total_runs"]),
-        ("Mean Latency (s)", f"{summary['mean_latency']:.6f}"),
-        ("Latency Variance", f"{summary['latency_variance']:.6f}"),
-        ("Mean Token Usage", f"{summary['mean_token_usage']:.2f}"),
-        ("Accuracy (%)", f"{summary['accuracy']:.2f}"),
-        ("Energy (kWh total)", f"{summary['energy_kwh_total']:.10f}"),
-        ("Energy Proxy", f"{summary['energy_proxy']:.6f}"),
-        ("Efficiency Score", f"{summary['efficiency_score']:.10f}"),
-        ("Latency Efficiency", f"{summary['latency_efficiency']:.6f}"),
-        ("Temperature", summary["temperature"]),
-        ("Top-p", summary["top_p"]),
-        ("Max Tokens", summary["max_tokens"]),
-        ("Hardware", summary["hardware_environment"]),
-    ]
-
+def _print_summary(summary: Dict[str, Any]) -> None:
     print("\nBenchmark Summary")
-    print("-" * 90)
-    for metric, value in rows:
-        print(f"{metric:<22} | {value}")
-    print("-" * 90)
+    print("-" * 80)
+    print(f"Task: {summary['task_name']}")
+    print(f"Strategy: {summary['strategy_name']}")
+    print(f"Model: {summary['model_name']}")
+    print(f"Total Runs: {summary['total_runs']}")
+    print(f"Mean Latency (ms): {summary['mean_latency_ms']:.3f}")
+    print(f"Mean Tokens: {summary['mean_total_tokens']:.2f}")
+    print(f"Mean Accuracy (%): {summary['mean_accuracy_percent']:.2f}")
+    print(f"Mean Quality Score: {summary['mean_quality_score']:.2f}")
+    print(f"Total Energy (kWh): {summary['total_energy_kwh']:.10f}")
+    print(f"Total Energy Cost: ${summary['total_energy_cost']:.6f}")
+    print(f"Total Hardware Cost: ${summary['total_hardware_cost']:.6f}")
+    print("-" * 80)
 
 
 def main() -> None:
-    db_manager = DatabaseManager()
-    db_manager.connect_to_mysql()
-
-    model_executor = ModelExecutor()
-    metrics_calculator = MetricsCalculator()
-    prompt_builder = PromptBuilder()
-
-    controls = ExperimentalControls(
-        temperature=DEFAULT_TEMPERATURE,
-        top_p=DEFAULT_TOP_P,
-        max_tokens=DEFAULT_MAX_TOKENS,
-        gpu_watts=GPU_POWER_WATTS,
-    )
+    repository = BenchmarkRepository()
+    repository.connect()
+    assert repository.connection is not None
+    initialize_schema(repository.connection)
+    ensure_schema_compat(repository.connection)
+    repository.ensure_models(CONFIG.models.available_model_names)
 
     runner = ExperimentRunner(
-        db_manager=db_manager,
-        model_executor=model_executor,
-        metrics_calculator=metrics_calculator,
-        controls=controls,
-        prompt_builder=prompt_builder,
+        repository=repository,
+        model_executor=ModelExecutor(),
+        metric_collector=MetricCollector(),
+        prompt_builder=PromptBuilder(),
+        accuracy_evaluator=AccuracyEvaluator(),
     )
 
     try:
-        print("Prompt Optimization and Sustainability Benchmarking")
-        _print_available_options(db_manager)
+        print("Prompt Optimization Benchmarking")
+        _print_options(repository)
 
         task_id = _prompt_int("\nEnter task_id: ")
         strategy_id = _prompt_int("Enter strategy_id: ")
         model_id = _prompt_int("Enter model_id: ")
-        input_prompt = _prompt_non_empty("Enter input prompt: ")
-        trials_per_input = _prompt_trials_min_3("Enter number of trials (minimum 3): ")
+        input_text = _prompt_non_empty("Enter input prompt: ")
+        trials = _prompt_int(
+            f"Enter number of trials (default {CONFIG.benchmark.repetition_count}): ",
+            minimum=1,
+        )
 
-        task = db_manager.get_task(task_id)
+        task = repository.get_task(task_id)
         if not task:
             raise ValueError(f"Task ID {task_id} not found.")
 
-        strategy = db_manager.get_strategy(strategy_id)
+        strategy = repository.get_strategy(strategy_id)
         if not strategy:
             raise ValueError(f"Strategy ID {strategy_id} not found.")
 
         runtime_examples = _prompt_required_examples(
-            task_name=task.get("task_name", ""),
-            strategy_type=strategy.get("strategy_type", ""),
+            task_name=task.get("task_name") or "",
+            strategy_type=strategy.get("strategy_type") or "",
         )
-        input_id = db_manager.insert_dataset_input(task_id=task_id, input_text=input_prompt)
-        print(f"Inserted dataset input with input_id={input_id}")
+
+        input_id = repository.insert_dataset_input(input_text=input_text)
 
         result = runner.run_experiment(
             task_id=task_id,
             strategy_id=strategy_id,
             model_id=model_id,
-            trials_per_input=trials_per_input,
+            trials_per_input=trials,
             input_id=input_id,
             runtime_examples=runtime_examples,
         )
 
-        summary = result["summary"]
-        _print_summary(summary)
+        _print_summary(result["summary"])
         print(f"Inserted run rows: {len(result['run_records'])}")
 
     finally:
-        db_manager.close()
+        repository.close()
 
 
 if __name__ == "__main__":
