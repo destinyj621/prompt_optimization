@@ -36,7 +36,7 @@ Default values:
 - host: `localhost`
 - port: `3306`
 - user: `root`
-- password: `destiny`
+- password: ``
 - database: `prompt_benchmark`
 
 If MySQL is not running or credentials are wrong, UI pages will show connection errors.
@@ -142,11 +142,3 @@ Stored in `experiment_runs`:
   - Verify model name exists in `ollama list`
 - **No tasks/strategies in dropdowns**:
   - Re-run schema SQL manually if needed, or check DB table contents
-
-## Optional CLI Entry
-
-You can still run the CLI flow:
-
-```powershell
-python benchmarking_backend/main.py
-```
