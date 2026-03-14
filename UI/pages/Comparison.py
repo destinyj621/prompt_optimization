@@ -1,101 +1,140 @@
-from datetime import datetime
-
-import pandas as pd
 import streamlit as st
+import pandas as pd
+from datetime import datetime
 
 st.set_page_config(page_title="Results & Comparison", layout="wide")
 
+
 experiment = st.session_state.get("last_experiment")
-if not experiment:
+if not experiment or not experiment.get("results"):
     st.warning("No experiment selected.")
     st.stop()
 
-result = experiment.get("result", {})
-run_records = result.get("run_records", [])
-summary = result.get("summary", {})
+raw_results = experiment["results"]
 
-if not run_records:
-    st.warning("No run records returned.")
-    st.stop()
 
-df = pd.DataFrame(run_records)
+results = []
+for r in raw_results:
+    results.append({
+        "variant": r.get("variant") or r.get("strategy_name") or "Unknown Variant",
+        "latency": r.get("latency") or r.get("mean_latency_ms") or 0,
+        "quality": r.get("quality") or r.get("mean_quality_score") or 0,
+        "tokens": r.get("tokens") or r.get("mean_total_tokens") or 0,
+        "efficiency": r.get("efficiency") or r.get("mean_throughput_tokens_per_sec") or 0,
+        "variance": r.get("variance") or 0,
+        "cost": r.get("cost") or r.get("total_energy_cost") or 0,
+        "output_text": r.get("output_text", ""),
+        "run_records": r.get("run_records", []),
+    })
+
+df = pd.DataFrame(results)
+table_df = df.drop(columns=["output_text"], errors="ignore")
+def highlight_best(c):
+    if c.name == "variance":
+        best = c.min()
+    else:
+        best = c.max()
+    return ["background-color: #E6FFFA; font-weight: 600" if v == best else "" for v in c]
+
+def render_summary_cards():
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric(
+            "Best Quality",
+            f"{df['quality'].max():.1f}%",
+            df.loc[df['quality'].idxmax(), "variant"]
+        )
+    with c2:
+        st.metric(
+            "Lowest Cost",
+            f"${df['cost'].min():.4f}",
+            df.loc[df['cost'].idxmin(), "variant"]
+        )
+    with c3:
+        st.metric(
+            "Fastest",
+            f"{df['latency'].min():.0f} ms",
+            df.loc[df['latency'].idxmin(), "variant"]
+        )
+    with c4:
+        st.metric(
+            "Best Efficiency",
+            f"{df['efficiency'].max():.1f}",
+            df.loc[df['efficiency'].idxmax(), "variant"]
+        )
+
+def render_table():
+    styled_df = (
+        table_df.style
+        .apply(highlight_best, subset=["cost"], axis=0)
+        .apply(highlight_best, subset=["latency"], axis=0)
+        .apply(highlight_best, subset=["quality"], axis=0)
+        .apply(highlight_best, subset=["variance"], axis=0)
+        .apply(highlight_best, subset=["efficiency"], axis=0)
+    )
+    st.dataframe(styled_df, use_container_width=True)
+
+def render_charts():
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("Cost per Request")
+        st.bar_chart(df.set_index("variant")["cost"])
+    with c2:
+        st.subheader("Average Latency")
+        st.bar_chart(df.set_index("variant")["latency"])
+    c3, c4 = st.columns(2)
+    with c3:
+        st.subheader("Quality Score")
+        st.bar_chart(df.set_index("variant")["quality"])
+    with c4:
+        st.subheader("Composite Efficiency Score")
+        st.bar_chart(df.set_index("variant")["efficiency"])
 
 st.title("Results & Comparison")
 st.caption(
-    f"{experiment.get('experiment_name') or 'Experiment'} - Completed on {datetime.now().strftime('%b %d, %Y')}"
+    f"{experiment.get('experiment_name', 'Unnamed Experiment')} • Completed on {datetime.now().strftime('%b %d, %Y')}"
 )
-
-st.markdown("### Experiment Metadata")
-meta_c1, meta_c2, meta_c3, meta_c4, meta_c5 = st.columns(5)
-with meta_c1:
-    st.metric("Task", summary.get("task_name", experiment.get("task", {}).get("task_name", "-")))
-with meta_c2:
-    st.metric("Strategy", summary.get("strategy_name", experiment.get("strategy", {}).get("strategy_name", "-")))
-with meta_c3:
-    st.metric("Model", summary.get("model_name", experiment.get("model", {}).get("model_name", "-")))
-with meta_c4:
-    st.metric("Number of Runs", int(summary.get("total_runs", len(run_records))))
-with meta_c5:
-    st.metric("Experiment Date", datetime.now().strftime("%Y-%m-%d"))
-
-st.markdown("### Aggregate Metrics")
-c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1, c2 = st.columns([3, 1])
 with c1:
-    st.metric("Mean Latency (ms)", f"{summary.get('mean_latency_ms', 0):.2f}")
+    t1, t2, t3 = st.tabs(["Chat","Table", "Charts", ])
+    st.divider()
+    with t1:
+        st.markdown("LLM Outputs")
+
+        outputs = df["output_text"].fillna("").astype(str)
+
+        if outputs.str.strip().eq("").all():
+            st.info("No output text recorded for this run.")
+        else:
+            for idx, row in df.iterrows():
+                output = str(row.get("output_text", "")).strip()
+                if output:
+                    with st.expander(f"Output — {row['variant']}"):
+                        st.markdown(output)
+    with t2:
+        st.markdown("### Summary")
+        render_summary_cards()
+        st.markdown("### Detailed Results")
+        render_table()
+    with t3:
+        st.markdown("### Summary")
+        render_summary_cards()
+        t2.markdown("### Visual Comparison")
+        render_charts()
+
 with c2:
-    st.metric("Mean Tokens", f"{summary.get('mean_total_tokens', 0):.2f}")
-with c3:
-    st.metric("Mean Accuracy (%)", f"{summary.get('mean_accuracy_percent', 0):.2f}")
-with c4:
-    st.metric("Mean Quality", f"{summary.get('mean_quality_score', 0):.2f}")
-with c5:
-    st.metric("Total Energy (kWh)", f"{summary.get('total_energy_kwh', 0):.8f}")
-with c6:
-    st.metric("Total Carbon (kg)", f"{summary.get('total_carbon_kg', 0):.8f}")
+    st.download_button(
+        "Export Report",
+        data=df.drop(columns=["output_text"], errors="ignore").to_csv(index=False),
+        file_name="benchmark_results.csv",
+        mime="text/csv",
+    )
 
-st.markdown("### Run-Level Metrics")
-visible_columns = [
-    "run_id",
-    "latency_ms",
-    "prompt_tokens",
-    "completion_tokens",
-    "total_tokens",
-    "throughput_tokens_per_sec",
-    "throughput_requests_per_sec",
-    "accuracy_percent",
-    "field_accuracy_percent",
-    "exact_record_match",
-    "schema_compliance_percent",
-    "quality_score",
-    "energy_kwh",
-    "energy_cost",
-    "hardware_cost",
-    "carbon_kg",
-]
-columns = [column for column in visible_columns if column in df.columns]
-st.dataframe(df[columns], use_container_width=True, height=360)
 
-st.markdown("### Reproducibility Context")
-for idx, record in enumerate(run_records, start=1):
-    with st.expander(f"Run {idx} Context"):
-        st.markdown("**Raw Input Text**")
-        st.code(record.get("input_text", ""))
-        st.markdown("**Final Prompt Sent to Model**")
-        st.code(record.get("input_prompt", ""))
-        st.markdown("**Model Output**")
-        st.code(record.get("output_text", ""))
-
-st.download_button(
-    "Export Run Results",
-    data=df.to_csv(index=False),
-    file_name="benchmark_run_records.csv",
-    mime="text/csv",
-)
-
-b1, b2 = st.columns([8.5, 1.5])
-with b1:
-    if st.button("Back to Experiment Setup"):
+c1, c2 = st.columns([8.3, 1])
+with c1:
+    if st.button("← Back to Experiment Setup"):
         st.switch_page("pages/Experiment_setup.py")
-with b2:
-    if st.button("Recent Runs"):
+with c2:
+    if st.button("View Recent Runs →"):
         st.switch_page("pages/Recent_runs.py")
