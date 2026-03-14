@@ -37,6 +37,7 @@ class ExperimentRunner:
         trials_per_input: Optional[int] = None,
         input_id: Optional[int] = None,
         runtime_examples: Optional[List[Dict[str, Any]]] = None,
+        experiment_run_id: Optional[str]= None, #added this
     ) -> Dict[str, Any]:
         task = self.repository.get_task(task_id)
         strategy = self.repository.get_strategy(strategy_id)
@@ -106,6 +107,7 @@ class ExperimentRunner:
                     "time_id": time_id,
                     "input_prompt": prompt_text,
                     "output_text": execution.output_text,
+                    "experiment_run_id": experiment_run_id, #added this
                     **metrics,
                     **evaluation,
                 }

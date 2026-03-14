@@ -150,6 +150,7 @@ def ensure_schema_compat(connection: MySQLConnection) -> None:
         "field_accuracy_percent": "DECIMAL(8,4) NULL",
         "exact_record_match": "TINYINT(1) NULL",
         "schema_compliance_percent": "DECIMAL(8,4) NULL",
+        "experiment_run_id": "VARCHAR(36) NULL", #added this
     }
     for column_name, column_type in required_experiment_columns.items():
         if not _column_exists(connection, "experiment_runs", column_name):
@@ -182,6 +183,7 @@ def ensure_schema_compat(connection: MySQLConnection) -> None:
         "idx_experiment_runs_time_id": "CREATE INDEX idx_experiment_runs_time_id ON experiment_runs(time_id)",
         "idx_experiment_runs_quality_score": "CREATE INDEX idx_experiment_runs_quality_score ON experiment_runs(quality_score)",
         "idx_experiment_runs_accuracy_percent": "CREATE INDEX idx_experiment_runs_accuracy_percent ON experiment_runs(accuracy_percent)",
+        "idx_experiment_runs_experiment_run_id": "CREATE INDEX idx_experiment_runs_experiment_run_id ON experiment_runs(experiment_run_id)", #added this
     }
     for index_name, create_sql in required_indexes.items():
         if not _index_exists(connection, "experiment_runs", index_name):

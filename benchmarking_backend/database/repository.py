@@ -178,6 +178,7 @@ class BenchmarkRepository:
             "schema_compliance_percent",
             "quality_score",
             "output_text",
+            "experiment_run_id", #added this
         ]
 
         placeholders = ", ".join(["%s"] * len(columns))
@@ -185,7 +186,7 @@ class BenchmarkRepository:
             f"INSERT INTO experiment_runs ({', '.join(columns)}) "
             f"VALUES ({placeholders})"
         )
-        values = [run_data[column] for column in columns]
+        values = [run_data.get(column) for column in columns] #added .get()
 
         cursor = self.connection.cursor()
         cursor.execute(query, values)
@@ -196,38 +197,91 @@ class BenchmarkRepository:
 
     def list_recent_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
         safe_limit = max(1, int(limit))
-        return self._fetch_all(
+
+        groups= self._fetch_all( #added this
             """
             SELECT
-                er.run_id,
-                rt.run_date,
-                rt.run_time,
-                t.task_name,
-                ps.strategy_name,
-                m.model_name,
-                er.latency_ms,
-                er.prompt_tokens,
-                er.completion_tokens,
-                er.total_tokens,
-                er.throughput_tokens_per_sec,
-                er.throughput_requests_per_sec,
-                er.energy_kwh,
-                er.energy_cost,
-                er.hardware_cost,
-                er.accuracy_percent,
-                er.field_accuracy_percent,
-                er.exact_record_match,
-                er.schema_compliance_percent,
-                er.quality_score,
-                er.input_prompt,
-                er.output_text
+                experiment_run_id,
+                MIN(er.run_id) AS first_run_id,
+                MAX(rt.run_date) AS run_date,
+                MAX(rt.run_time) AS run_time,
+                t.task_name
             FROM experiment_runs er
-            JOIN tasks t ON er.task_id = t.task_id
-            JOIN prompt_strategies ps ON er.strategy_id = ps.strategy_id
-            JOIN models m ON er.model_id = m.model_id
-            JOIN run_times rt ON er.time_id = rt.time_id
-            ORDER BY rt.run_date DESC, rt.run_time DESC, er.run_id DESC
+            JOIN tasks t ON er.task_id= t.task_id
+            JOIN run_times rt ON er.time_id= rt.time_id
+            WHERE er.experiment_run_id IS NOT NULL
+            GROUP BY er.experiment_run_id, t.task_name
+            ORDER BY run_date DESC, run_time DESC, first_run_id DESC
             LIMIT %s
             """,
             (safe_limit,),
         )
+        if not groups:
+            return self._fetch_all(
+                """
+                SELECT
+                    er.run_id,
+                    rt.run_date,
+                    rt.run_time,
+                    t.task_name,
+                    ps.strategy_name,
+                    m.model_name,
+                    er.latency_ms,
+                    er.prompt_tokens,
+                    er.completion_tokens,
+                    er.total_tokens,
+                    er.throughput_tokens_per_sec,
+                    er.throughput_requests_per_sec,
+                    er.energy_kwh,
+                    er.energy_cost,
+                    er.hardware_cost,
+                    er.accuracy_percent,
+                    er.field_accuracy_percent,
+                    er.exact_record_match,
+                    er.schema_compliance_percent,
+                    er.quality_score,
+                    er.input_prompt,
+                    er.output_text
+                FROM experiment_runs er
+                JOIN tasks t ON er.task_id = t.task_id
+                JOIN prompt_strategies ps ON er.strategy_id = ps.strategy_id
+                JOIN models m ON er.model_id = m.model_id
+                JOIN run_times rt ON er.time_id = rt.time_id
+                WHERE er.experiment_run_id IS NULL
+                ORDER BY rt.run_date DESC, rt.run_time DESC, er.run_id DESC
+                LIMIT %s
+                """,
+                (safe_limit,),
+            )
+        result=[]
+        for i, group in enumerate(groups, start=1): #added this
+            exp_id= group["experiment_run_id"]
+            variants= self._fetch_all(
+                """
+                SELECT
+                    ps.strategy_name, 
+                    m.model_name,
+                    AVG(er.latency_ms)                  AS latency_ms,
+                    AVG(er.total_tokens)                AS total_tokens,
+                    AVG(er.accuracy_percent)            AS accuracy_percent,
+                    AVG(er.quality_score)               AS quality_score,
+                    AVG(er.throughput_tokens_per_sec)   AS throughput_tokens_per_sec,
+                    AVG(er.energy_cost)                 AS energy_cost,
+                    MAX(er.output_text)                 AS output_text
+                FROM experiment_runs er
+                JOIN prompt_strategies ps ON er.strategy_id = ps.strategy_id
+                JOIN models m ON er.model_id = m.model_id
+                WHERE er.experiment_run_id= %s
+                GROUP BY er.strategy_id, er.model_id, ps.strategy_name, m.model_name
+                """,
+                (exp_id,),
+            )
+            result.append({
+                "run_id":i,
+                "experiment_run_id":exp_id,
+                "run_date": str(group["run_date"]),
+                "run_time": str(group["run_time"]),
+                "task_name": group["task_name"],
+                "results": variants,
+            })
+        return result

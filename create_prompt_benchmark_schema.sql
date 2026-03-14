@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS experiment_runs (
     model_id INT NOT NULL,
     input_id INT NOT NULL,
     time_id BIGINT NOT NULL,
+    experiment_run_id VARCHAR(36) NULL, 
 
     input_prompt MEDIUMTEXT NOT NULL,
 
@@ -92,6 +93,7 @@ CREATE INDEX idx_experiment_runs_input_id ON experiment_runs(input_id);
 CREATE INDEX idx_experiment_runs_time_id ON experiment_runs(time_id);
 CREATE INDEX idx_experiment_runs_quality_score ON experiment_runs(quality_score);
 CREATE INDEX idx_experiment_runs_accuracy_percent ON experiment_runs(accuracy_percent);
+CREATE INDEX idx_experiment_runs_experiment_run_id ON experiment_runs(experiment_run_id);
 
 INSERT INTO tasks (task_name, task_description, expected_output) VALUES
     ('Summarization', 'Summarize the given text.', NULL),

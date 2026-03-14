@@ -79,6 +79,7 @@ def run_experiment_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
         input_text = payload.get("raw_input")
     input_id_raw = payload.get("input_id")
 
+    experiment_run_id: Optional[str]= payload.get("experiment_run_id") #added this
     repository = _build_repository()
     try:
         input_id: Optional[int]
@@ -103,6 +104,7 @@ def run_experiment_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
             model_id=model_id,
             trials_per_input=max(1, run_count),
             input_id=input_id,
+            experiment_run_id=experiment_run_id, #added this
         )
         return result
     finally:

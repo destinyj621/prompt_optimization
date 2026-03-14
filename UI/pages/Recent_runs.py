@@ -27,19 +27,23 @@ if not recent_runs:
 
 rows = []
 for run in recent_runs:
-    summary = run.get("summary", {})
-    rows.append({
-        "run_id": run.get("run_id", "-"),
-        "run_datetime": f"{run.get('run_date')} {run.get('run_time')}",
-        "task_name": run.get("task_name", "-"),
-        "strategy_name": run.get("strategy_name", "-"),
-        "model_name": run.get("model_name", "-"),
-        "latency_ms": run.get("latency_ms", None),
-        "total_tokens": run.get("total_tokens", None),
-        "accuracy_percent": run.get("accuracy_percent", None),
-        "quality_score": run.get("quality_score", None),
-        "output_text": run["output_text"],
-    })
+    run_results= run.get("results",[run])
+    for variant in run_results:
+        rows.append({
+            "run_id": run.get("run_id", "-"),
+            "experiment_run_id": run.get("experiment_run_id",""),
+            "run_datetime": f"{run.get('run_date')} {run.get('run_time')}",
+            "task_name": run.get("task_name", "-"),
+            "strategy_name": variant.get("strategy_name", "-"),
+            "model_name": variant.get("model_name", "-"),
+            "latency_ms": variant.get("latency_ms", None),
+            "total_tokens": variant.get("total_tokens", None),
+            "accuracy_percent": variant.get("accuracy_percent", None),
+            "quality_score": variant.get("quality_score", None),
+            "throughput_tokens_per_sec": variant.get("throughput_tokens_per_sec", None),
+            "energy_cost": variant.get("energy_cost", None),
+            "output_text": variant.get("output_text",""),
+        })
 
 df = pd.DataFrame(rows)
 
@@ -70,25 +74,26 @@ show_cols = [
 ]
 st.dataframe(df[show_cols], use_container_width=True, height=420)
 
-selected_run_id = st.selectbox("Select run ID to inspect", df["run_id"].tolist())
+unique_run_ids= df["run_id"].unique().tolist()
+selected_run_id = st.selectbox("Select run ID to inspect", unique_run_ids)
 
 if st.button("View Selected Run"):
-    selected = df[df["run_id"] == selected_run_id].iloc[0]
-    
-    comparison_row = {
-        "variant": selected["strategy_name"] or "Unknown Variant",
-        "cost": 0.0,  
-        "latency": float(selected["latency_ms"] or 0),
-        "tokens": int(selected["total_tokens"] or 0),
-        "quality": float(selected["quality_score"] or 0),
-        "variance": 0.0,      
-        "efficiency": float(selected["quality_score"] or 0),  
-        "output_text": selected.get("output_text",""),
-    }
-
+    selected = df[df["run_id"] == selected_run_id]
+    comparison_results=[]
+    for _, row in selected.iterrows():
+        comparison_results.append({
+            "variant": str(row["strategy_name"]) if pd.notna(row["strategy_name"]) else "Unknown Variant",
+            "cost": float(row["energy_cost"] or 0) if pd.notna(row["energy_cost"]) else 0.0,
+            "latency": float(row["latency_ms"]) if pd.notna(row["latency_ms"]) else 0.0,
+            "tokens": int(row["total_tokens"]) if pd.notna(row["total_tokens"]) else 0,
+            "quality": float(row["quality_score"]) if pd.notna(row["quality_score"]) else 0.0,
+            "variance": 0.0,
+            "efficiency": float(row["throughput_tokens_per_sec"]) if pd.notna(row["throughput_tokens_per_sec"]) else 0.0,
+            "output_text": str(row["output_text"]) if pd.notna(row["output_text"]) else "",
+        })
     st.session_state["last_experiment"] = {
-        "experiment_name": f"run-{selected_run_id}",
-        "results": [comparison_row],
+        "experiment_name": f"Run #{selected_run_id} — {selected.iloc[0]['task_name']}",
+        "results": comparison_results,
     }
 
     st.switch_page("pages/Comparison.py")

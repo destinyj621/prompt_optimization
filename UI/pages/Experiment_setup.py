@@ -129,38 +129,53 @@ with c1:
     st.caption(f"{len(st.session_state.variants)} prompt variants(s) configured")
 with c2:
     if st.button("▷ Run Experiment", type="primary"):
-        payloads=[]
+        valid=True
+
         for variant in st.session_state.variants:
             if variant["strategy_id"] is None or variant["model_id"] is None:
                 st.error(f"Variant {variant['id']} is missing a strategy or model. Cannot run.")
-                st.stop()
-            input_text_value = f"{variant['system_prompt']}\n{variant['instruction_prompt']}\n{variant['context']}".strip()
-            if not input_text_value:
-                input_text_value = None
-            payloads.append({
-                "task_id": selected_task["task_id"],
-                "strategy_id": int(variant["strategy_id"]),
-                "model_id": int(variant["model_id"]),
-                "run_count": int(runs_per_prompt),
-                "input_text": input_text_value,
-                "raw_input": input_text_value,
-                "input_id": selected_input_id,
-            })
-        results = []
-        with st.spinner("Running experiment..."):
-            for p in payloads:
-                try:
-                    result = run_experiment(p)
-                    results.append(result)
-                except Exception as exc:
-                    st.error(f"Experiment failed for variant {p['strategy_id']}: {exc}")
-        st.session_state["last_experiment"] = {
-            "experiment_name": experiment_name,
-            "task": selected_task,
-            "execution_mode": execution_mode,
-            "runs_per_prompt": runs_per_prompt,
-            "variants": st.session_state.variants,
-            "results": results
-        }
-        st.success("Experiment completed.")
-        st.switch_page("pages\Comparison.py")
+                valid= False
+                break
+        if valid:
+            st.session_state.pop("last_experiment", None)
+            experiment_run_id= str(uuid.uuid4())
+            payloads=[]
+            for variant in st.session_state.variants:
+                input_text_value = f"{variant['system_prompt']}\n{variant['instruction_prompt']}\n{variant['context']}".strip()
+                if not input_text_value:
+                    input_text_value = None
+                payloads.append({
+                    "task_id": selected_task["task_id"],
+                    "strategy_id": int(variant["strategy_id"]),
+                    "model_id": int(variant["model_id"]),
+                    "run_count": int(runs_per_prompt),
+                    "input_text": input_text_value,
+                    "raw_input": input_text_value,
+                    "input_id": selected_input_id,
+                    "experiment_run_id": experiment_run_id, 
+                })
+            results = []
+            with st.spinner("Running experiment..."):
+                for p in payloads:
+                    try:
+                        result = run_experiment(p)
+                        summary = {**result.get("summary",{})} 
+                        run_records= result.get("run_records",[])
+                        summary["output_text"]= run_records[-1]["output_text"]if run_records else ""
+                        summary["run_records"]= run_records 
+                        results.append(summary)
+                    except Exception as exc:
+                        st.error(f"Experiment failed for variant {p['strategy_id']}: {exc}")
+            if results:
+                st.session_state["last_experiment"] = {
+                    "experiment_name": experiment_name,
+                    "task": selected_task,
+                    "execution_mode": execution_mode,
+                    "runs_per_prompt": runs_per_prompt,
+                    "variants": st.session_state.variants,
+                    "results": results
+                }
+                st.success("Experiment completed.")
+                st.switch_page("pages/Comparison.py")
+            else:
+                st.error("No results were returned.")

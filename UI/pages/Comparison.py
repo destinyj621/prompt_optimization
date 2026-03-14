@@ -28,7 +28,7 @@ for r in raw_results:
     })
 
 df = pd.DataFrame(results)
-table_df = df.drop(columns=["output_text"], errors="ignore")
+table_df = df.drop(columns=["output_text","run_records"], errors="ignore")
 def highlight_best(c):
     if c.name == "variance":
         best = c.min()
@@ -119,13 +119,13 @@ with c1:
     with t3:
         st.markdown("### Summary")
         render_summary_cards()
-        t2.markdown("### Visual Comparison")
+        st.markdown("### Visual Comparison")
         render_charts()
 
 with c2:
     st.download_button(
         "Export Report",
-        data=df.drop(columns=["output_text"], errors="ignore").to_csv(index=False),
+        data=df.drop(columns=["output_text","run_records"], errors="ignore").to_csv(index=False),
         file_name="benchmark_results.csv",
         mime="text/csv",
     )
