@@ -37,7 +37,8 @@ class ExperimentRunner:
         trials_per_input: Optional[int] = None,
         input_id: Optional[int] = None,
         runtime_examples: Optional[List[Dict[str, Any]]] = None,
-        experiment_run_id: Optional[str]= None, #added this
+        prompt_config: Optional[Dict[str, str]] = None,
+        experiment_run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         task = self.repository.get_task(task_id)
         strategy = self.repository.get_strategy(strategy_id)
@@ -56,7 +57,9 @@ class ExperimentRunner:
                 raise ValueError(f"Input ID {input_id} not found.")
             dataset_inputs = [input_row]
         else:
-            dataset_inputs = self.repository.list_dataset_inputs(limit=CONFIG.benchmark.default_batch_size)
+            dataset_inputs = self.repository.list_dataset_inputs(
+                limit=CONFIG.benchmark.default_batch_size
+            )
             if not dataset_inputs:
                 raise ValueError("No dataset inputs found.")
 
@@ -78,25 +81,36 @@ class ExperimentRunner:
                     strategy=strategy,
                     input_text=input_text,
                     examples=examples,
+                    prompt_config=prompt_config,
                 )
+                print("BUILT PROMPT START")
+                print(prompt_text)
+                print("BUILT PROMPT END")
 
                 execution = self.model_executor.execute(
                     prompt_text=prompt_text,
                     model_name=model["model_name"],
                 )
 
+                now = datetime.now()
+                time_id = self.repository.get_or_create_run_time(now)
+
                 metrics = self.metric_collector.collect(
                     latency_ms=execution.latency_ms,
                     prompt_tokens=execution.prompt_tokens,
                     completion_tokens=execution.completion_tokens,
-                )
+                ) or {}
+
                 evaluation = self.accuracy_evaluator.evaluate(
-                    expected_output=task.get("expected_output") or "",
+                    expected_output=input_row.get("expected_label", ""),
                     model_output=execution.output_text,
                 )
 
-                now = datetime.now()
-                time_id = self.repository.get_or_create_run_time(now)
+                evaluation.setdefault("accuracy_percent", 0.0)
+                evaluation.setdefault("field_accuracy_percent", 0.0)
+                evaluation.setdefault("exact_record_match", 0)
+                evaluation.setdefault("schema_compliance_percent", 0.0)
+                evaluation.setdefault("quality_score", 0.0)
 
                 run_data: Dict[str, Any] = {
                     "task_id": task_id,
@@ -107,7 +121,7 @@ class ExperimentRunner:
                     "time_id": time_id,
                     "input_prompt": prompt_text,
                     "output_text": execution.output_text,
-                    "experiment_run_id": experiment_run_id, #added this
+                    "experiment_run_id": experiment_run_id,
                     **metrics,
                     **evaluation,
                 }

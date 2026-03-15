@@ -20,18 +20,21 @@ if not tasks or not strategies or not models:
     st.error("Missing required backend data (tasks, strategies, or models).")
     st.stop()
 
-
 if "variants" not in st.session_state:
-    st.session_state.variants = [{
-        "id":str(uuid.uuid4()),
-        "strategy_type":"Zero-Shot",
-        "strategy_id": None,
-        "model_id": None,
-        "description": "Baseline strategy",
-        "system_prompt": "",
-        "instruction_prompt":"",
-        "context":"",
-    }]
+    st.session_state.variants = [
+        {
+            "id": str(uuid.uuid4()),
+            "strategy_type": "Zero-Shot",
+            "expected_label": "",
+            "strategy_id": None,
+            "model_id": None,
+            "description": "Baseline strategy",
+            "system_prompt": "",
+            "instruction_prompt": "",
+            "context": "",
+        }
+    ]
+
 seen_ids = set()
 for v in st.session_state.variants:
     if not isinstance(v["id"], str) or v["id"] in seen_ids:
@@ -59,6 +62,17 @@ with c2:
         list(input_options.keys()), key="existing_dataset_input"
     )
     selected_input_id = input_options[selected_input_key]
+
+custom_input_text = st.text_area(
+    "Custom Input Text",
+    placeholder="Enter only the text to classify, for example: This was the worst experience ever.",
+    height=120,
+    key="custom_input_text",
+)
+st.caption(
+    "Use an existing dataset input or enter custom input text. "
+    "The prompt fields below configure the instructions sent to the model."
+)
 st.divider()
 st.subheader("Prompt Strategies")
 if st.button("+ Add Prompt Variant"):
@@ -96,76 +110,127 @@ for i, variant in enumerate(st.session_state.variants):
         variant["strategy_id"] = strategy_options[selected_strategy_key]["strategy_id"]
         variant["strategy_type"] = strategy_options[selected_strategy_key]["strategy_name"]
 
-    with c2: 
-        variant["description"]= st.text_input("Description", value=variant["description"],
-                                                   placeholder="e.g., Baseline with direct instructions",
-                                                   key=f"description_{variant['id']}",)
-    variant_model_key= st.selectbox("Select Model",list(model_options.keys()), index=0, key=f"model_{variant['id']}")
-    variant["model_id"]= model_options[variant_model_key]["model_id"]
-    variant["system_prompt"]=st.text_area(
-        "System Prompt", value=variant["system_prompt"], placeholder= "Define the AI's role and behaviour...",
-        height=80, key=f"system_{variant['id']}",)
-    variant["instruction_prompt"]=st.text_area(
-        "Instruction Prompt *", value=variant["instruction_prompt"], placeholder= "Provide clear task instructions...",
-        height=120, key=f"Instruction_{variant['id']}",)
-    variant["context"]=st.text_area(
-        "Context/ Examples (Optional)", value=variant["context"], placeholder= "Add examples or additional context...",
-        height=80, key=f"context_{variant['id']}",)
-    estimated_tokens= max(50, len(variant["instruction_prompt"])//3)
-    estimated_cost = estimated_tokens* 0.00002
-    st.caption(f"Estimated tokens: ~{estimated_tokens} | Estimated cost: ~${estimated_cost:.4f}")
+        with c2:
+            variant["description"] = st.text_input(
+                "Description",
+                value=variant["description"],
+                placeholder="e.g., Baseline with direct instructions",
+                key=f"description_{variant['id']}",
+            )
+
+        variant_model_key = st.selectbox(
+            "Select Model",
+            list(model_options.keys()),
+            index=0,
+            key=f"model_{variant['id']}",
+        )
+        variant["model_id"] = model_options[variant_model_key]["model_id"]
+
+        variant["system_prompt"] = st.text_area(
+            "System Prompt",
+            value=variant["system_prompt"],
+            placeholder="Define the AI's role and behaviour...",
+            height=80,
+            key=f"system_{variant['id']}",
+        )
+        variant["instruction_prompt"] = st.text_area(
+            "Instruction Prompt",
+            value=variant["instruction_prompt"],
+            placeholder="Provide clear task instructions...",
+            height=120,
+            key=f"instruction_{variant['id']}",
+        )
+        variant["context"] = st.text_area(
+            "Context / Examples (Optional)",
+            value=variant["context"],
+            placeholder="Add examples or additional context...",
+            height=80,
+            key=f"context_{variant['id']}",
+        )
+
+        label_options = ["", "positive", "negative", "neutral"]
+        current_label = variant.get("expected_label", "")
+        if current_label not in label_options:
+            current_label = ""
+        variant["expected_label"] = st.selectbox(
+            "Evaluation Label",
+            label_options,
+            index=label_options.index(current_label),
+            key=f"expected_label_{variant['id']}",
+        )
+
+        estimated_tokens = max(50, len(variant["instruction_prompt"]) // 3)
+        estimated_cost = estimated_tokens * 0.00002
+        st.caption(f"Estimated tokens: ~{estimated_tokens} | Estimated cost: ~${estimated_cost:.4f}")
+
 if to_remove is not None:
     st.session_state.variants.pop(to_remove)
     st.rerun()
 
 st.divider()
 st.subheader("Execution Configuration")
-execution_mode= st.radio("Execution Mode", ["Mock Estimation", "Limited Cloud Execution", "Local Execution"], index=0,)
-runs_per_prompt= st.number_input("Runs per Prompt",min_value=1, max_value=50, value=5)
-#footer
+execution_mode = st.radio(
+    "Execution Mode",
+    ["Mock Estimation", "Limited Cloud Execution", "Local Execution"],
+    index=0,
+)
+runs_per_prompt = st.number_input("Runs per Prompt", min_value=1, max_value=50, value=5)
+
 st.divider()
-c1, c2= st.columns([9,1])
+c1, c2 = st.columns([9, 1])
 with c1:
-    st.caption(f"{len(st.session_state.variants)} prompt variants(s) configured")
+    st.caption(f"{len(st.session_state.variants)} prompt variant(s) configured")
 with c2:
-    if st.button("▷ Run Experiment", type="primary"):
-        valid=True
+    if st.button("Run Experiment", type="primary"):
+        valid = True
+
+        if selected_input_id is None and not custom_input_text.strip():
+            st.error("Provide either a custom input text or select an existing dataset input.")
+            valid = False
 
         for variant in st.session_state.variants:
             if variant["strategy_id"] is None or variant["model_id"] is None:
                 st.error(f"Variant {variant['id']} is missing a strategy or model. Cannot run.")
-                valid= False
+                valid = False
                 break
+
         if valid:
             st.session_state.pop("last_experiment", None)
-            experiment_run_id= str(uuid.uuid4())
-            payloads=[]
+            experiment_run_id = str(uuid.uuid4())
+            raw_input_text = custom_input_text.strip() or None
+            payloads = []
+
             for variant in st.session_state.variants:
-                input_text_value = f"{variant['system_prompt']}\n{variant['instruction_prompt']}\n{variant['context']}".strip()
-                if not input_text_value:
-                    input_text_value = None
-                payloads.append({
+                payload = {
                     "task_id": selected_task["task_id"],
                     "strategy_id": int(variant["strategy_id"]),
                     "model_id": int(variant["model_id"]),
                     "run_count": int(runs_per_prompt),
-                    "input_text": input_text_value,
-                    "raw_input": input_text_value,
-                    "input_id": selected_input_id,
-                    "experiment_run_id": experiment_run_id, 
-                })
+                    "input_id": None if raw_input_text else selected_input_id,
+                    "input_text": raw_input_text,
+                    "raw_input": raw_input_text,
+                    "system_prompt": variant["system_prompt"],
+                    "instruction_prompt": variant["instruction_prompt"],
+                    "context": variant["context"],
+                    "experiment_run_id": experiment_run_id,
+                }
+                if variant.get("expected_label"):
+                    payload["expected_label"] = variant["expected_label"]
+                payloads.append(payload)
+
             results = []
             with st.spinner("Running experiment..."):
-                for p in payloads:
+                for payload in payloads:
                     try:
-                        result = run_experiment(p)
-                        summary = {**result.get("summary",{})} 
-                        run_records= result.get("run_records",[])
-                        summary["output_text"]= run_records[-1]["output_text"]if run_records else ""
-                        summary["run_records"]= run_records 
+                        result = run_experiment(payload)
+                        summary = {**result.get("summary", {})}
+                        run_records = result.get("run_records", [])
+                        summary["output_text"] = run_records[-1]["output_text"] if run_records else ""
+                        summary["run_records"] = run_records
                         results.append(summary)
                     except Exception as exc:
-                        st.error(f"Experiment failed for variant {p['strategy_id']}: {exc}")
+                        st.error(f"Experiment failed for variant {payload['strategy_id']}: {exc}")
+
             if results:
                 st.session_state["last_experiment"] = {
                     "experiment_name": experiment_name,
@@ -173,7 +238,7 @@ with c2:
                     "execution_mode": execution_mode,
                     "runs_per_prompt": runs_per_prompt,
                     "variants": st.session_state.variants,
-                    "results": results
+                    "results": results,
                 }
                 st.success("Experiment completed.")
                 st.switch_page("pages/Comparison.py")

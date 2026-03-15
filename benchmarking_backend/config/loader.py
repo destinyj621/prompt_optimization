@@ -28,6 +28,9 @@ class EnergyConfig:
 
 @dataclass(frozen=True)
 class BenchmarkConfig:
+    task: str
+    evaluation_metric: str
+    labels: list[str]
     default_batch_size: int
     repetition_count: int
 
@@ -65,6 +68,7 @@ class PromptingConfig:
     example_required_task_keywords: List[str]
     example_required_strategy_types: List[str]
     example_library: Dict[str, List[Dict[str, Any]]]
+    output_format: dict
 
 
 @dataclass(frozen=True)

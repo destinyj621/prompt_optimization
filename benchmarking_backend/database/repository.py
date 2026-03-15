@@ -53,7 +53,7 @@ class BenchmarkRepository:
 
     def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
         return self._fetch_one(
-            "SELECT task_id, task_name, task_description, expected_output FROM tasks WHERE task_id = %s",
+            "SELECT task_id, task_name, task_description FROM tasks WHERE task_id = %s",
             (task_id,),
         )
 
@@ -93,24 +93,38 @@ class BenchmarkRepository:
 
     def list_dataset_inputs(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         if limit is None:
-            return self._fetch_all("SELECT input_id, input_text FROM dataset_inputs ORDER BY input_id", ())
+            return self._fetch_all(
+                "SELECT input_id, input_text, expected_label FROM dataset_inputs ORDER BY input_id",
+                (),
+            )
         return self._fetch_all(
-            "SELECT input_id, input_text FROM dataset_inputs ORDER BY input_id LIMIT %s",
+            "SELECT input_id, input_text, expected_label FROM dataset_inputs ORDER BY input_id LIMIT %s",
             (limit,),
         )
 
     def get_dataset_input(self, input_id: int) -> Optional[Dict[str, Any]]:
         return self._fetch_one(
-            "SELECT input_id, input_text FROM dataset_inputs WHERE input_id = %s",
+            "SELECT input_id, input_text, expected_label FROM dataset_inputs WHERE input_id = %s",
             (input_id,),
         )
 
-    def insert_dataset_input(self, input_text: str) -> int:
+    def insert_dataset_input(self, input_text: str, expected_label: str = "", dataset_name: str = "runtime_inputs") -> int:
         self._ensure_connection()
         assert self.connection is not None
 
         cursor = self.connection.cursor()
-        cursor.execute("INSERT INTO dataset_inputs (input_text) VALUES (%s)", (input_text,))
+
+        cursor.execute(
+            """
+            INSERT INTO dataset_inputs (dataset_name, input_text, expected_label)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                expected_label = VALUES(expected_label),
+                input_id = LAST_INSERT_ID(input_id)
+            """,
+            (dataset_name, input_text, expected_label.strip()),
+        )
+
         self.connection.commit()
         input_id = int(cursor.lastrowid)
         cursor.close()
