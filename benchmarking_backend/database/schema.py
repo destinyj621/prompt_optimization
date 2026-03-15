@@ -150,6 +150,7 @@ def ensure_schema_compat(connection: MySQLConnection) -> None:
         "field_accuracy_percent": "DECIMAL(8,4) NULL",
         "exact_record_match": "TINYINT(1) NULL",
         "schema_compliance_percent": "DECIMAL(8,4) NULL",
+        "expected_label": "VARCHAR(50) NULL",
         "experiment_run_id": "VARCHAR(36) NULL", #added this
     }
     for column_name, column_type in required_experiment_columns.items():

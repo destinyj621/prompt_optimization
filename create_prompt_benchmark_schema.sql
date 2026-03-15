@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS experiment_runs (
 
     quality_score DECIMAL(8,4) NOT NULL,
 
+    expected_label VARCHAR(50) NULL,
     predicted_label VARCHAR(50) NULL,
     output_text MEDIUMTEXT,
 

@@ -39,6 +39,7 @@ class ExperimentRunner:
         runtime_examples: Optional[List[Dict[str, Any]]] = None,
         prompt_config: Optional[Dict[str, str]] = None,
         experiment_run_id: Optional[str] = None,
+        expected_label_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         task = self.repository.get_task(task_id)
         strategy = self.repository.get_strategy(strategy_id)
@@ -76,6 +77,11 @@ class ExperimentRunner:
         for input_row in dataset_inputs:
             for _ in range(trials):
                 input_text = input_row["input_text"]
+                expected_label = str(
+                    expected_label_override
+                    if expected_label_override is not None and str(expected_label_override).strip()
+                    else input_row.get("expected_label", "")
+                ).strip()
                 prompt_text = self.prompt_builder.build_prompt(
                     task=task,
                     strategy=strategy,
@@ -102,7 +108,7 @@ class ExperimentRunner:
                 ) or {}
 
                 evaluation = self.accuracy_evaluator.evaluate(
-                    expected_output=input_row.get("expected_label", ""),
+                    expected_output=expected_label,
                     model_output=execution.output_text,
                 )
 
@@ -118,6 +124,7 @@ class ExperimentRunner:
                     "model_id": model_id,
                     "input_id": input_row["input_id"],
                     "input_text": input_text,
+                    "expected_label": expected_label,
                     "time_id": time_id,
                     "input_prompt": prompt_text,
                     "output_text": execution.output_text,

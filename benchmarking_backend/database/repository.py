@@ -192,6 +192,7 @@ class BenchmarkRepository:
             "schema_compliance_percent",
             "quality_score",
             "output_text",
+            "expected_label",
             "experiment_run_id", #added this
         ]
 
@@ -281,7 +282,8 @@ class BenchmarkRepository:
                     AVG(er.quality_score)               AS quality_score,
                     AVG(er.throughput_tokens_per_sec)   AS throughput_tokens_per_sec,
                     AVG(er.energy_cost)                 AS energy_cost,
-                    MAX(er.output_text)                 AS output_text
+                    MAX(er.output_text)                 AS output_text,
+                    MAX(er.expected_label)              AS expected_label
                 FROM experiment_runs er
                 JOIN prompt_strategies ps ON er.strategy_id = ps.strategy_id
                 JOIN models m ON er.model_id = m.model_id

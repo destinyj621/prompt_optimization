@@ -38,12 +38,13 @@ for result in raw_results:
             "variance": _pick_metric(result, "variance"),
             "cost": _pick_metric(result, "cost", "energy_cost", "total_energy_cost"),
             "output_text": result.get("output_text", ""),
+            "expected_label": result.get("expected_label", ""),
             "run_records": result.get("run_records", []),
         }
     )
 
 df = pd.DataFrame(results)
-table_df = df.drop(columns=["output_text", "run_records"], errors="ignore")
+table_df = df.drop(columns=["output_text", "expected_label", "run_records"], errors="ignore")
 
 
 def highlight_best(column: pd.Series) -> list[str]:
@@ -138,9 +139,18 @@ with c1:
         else:
             for _, row in df.iterrows():
                 output = str(row.get("output_text", "")).strip()
-                if output:
-                    with st.expander(f"Output - {row['variant']}"):
-                        st.markdown(output)
+                expected = str(row.get("expected_label", "")).strip()
+                if not expected:
+                    run_records = row.get("run_records", [])
+                    if isinstance(run_records, list) and run_records:
+                        expected = str(run_records[-1].get("expected_label", "")).strip()
+                variant = row['variant']
+                if output or expected:
+                    with st.expander(f"Output - {variant}"):
+                        if expected:
+                            st.markdown(f"**Expected:** {expected}")
+                        if output:
+                            st.markdown(f"**Predicted:** {output}")
 
     with tab_table:
         st.markdown("### Summary")
@@ -157,7 +167,7 @@ with c1:
 with c2:
     st.download_button(
         "Export Report",
-        data=df.drop(columns=["output_text", "run_records"], errors="ignore").to_csv(index=False),
+        data=df.drop(columns=["output_text", "expected_label", "run_records"], errors="ignore").to_csv(index=False),
         file_name="benchmark_results.csv",
         mime="text/csv",
     )

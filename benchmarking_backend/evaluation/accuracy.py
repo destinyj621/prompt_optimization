@@ -78,8 +78,8 @@ def normalize_label(text: str) -> str:
 
 @dataclass
 class AccuracyEvaluator:
-    quality_accuracy_weight: float = 0.6
-    quality_schema_weight: float = 0.4
+    quality_accuracy_weight: float = 1.0
+    quality_schema_weight: float = 0.0 # set to zero for now since schema compliance is not a strong signal of quality for classification tasks, mostly useful for structured output tasks
 
     def evaluate(self, expected_output: str, model_output: str) -> dict[str, float | int]:
 

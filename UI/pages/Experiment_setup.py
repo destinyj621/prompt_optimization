@@ -141,7 +141,7 @@ for i, variant in enumerate(st.session_state.variants):
             key=f"instruction_{variant['id']}",
         )
         variant["context"] = st.text_area(
-            "Context / Examples (Optional)",
+            "Context / Examples (Few-Shot Examples)", # used to provide few-shot examples or additional context to the model without including it in the main instruction prompt
             value=variant["context"],
             placeholder="Add examples or additional context...",
             height=80,
@@ -226,6 +226,9 @@ with c2:
                         summary = {**result.get("summary", {})}
                         run_records = result.get("run_records", [])
                         summary["output_text"] = run_records[-1]["output_text"] if run_records else ""
+                        summary["expected_label"] = payload.get("expected_label", "") or (
+                            run_records[-1].get("expected_label", "") if run_records else ""
+                        )
                         summary["run_records"] = run_records
                         results.append(summary)
                     except Exception as exc:

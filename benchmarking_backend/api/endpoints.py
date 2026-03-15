@@ -162,6 +162,7 @@ def run_experiment_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
             runtime_examples=_resolve_runtime_examples(task=task, strategy=strategy, payload=payload),
             prompt_config=_resolve_prompt_config(payload),
             experiment_run_id=experiment_run_id, #added this
+            expected_label_override=expected_label or None,
         )
         return result
     finally:

@@ -43,6 +43,7 @@ for run in recent_runs:
             "throughput_tokens_per_sec": variant.get("throughput_tokens_per_sec", None),
             "energy_cost": variant.get("energy_cost", None),
             "output_text": variant.get("output_text",""),
+            "expected_label": variant.get("expected_label", ""),
         })
 
 df = pd.DataFrame(rows)
@@ -90,6 +91,7 @@ if st.button("View Selected Run"):
             "variance": 0.0,
             "efficiency": float(row["throughput_tokens_per_sec"]) if pd.notna(row["throughput_tokens_per_sec"]) else 0.0,
             "output_text": str(row["output_text"]) if pd.notna(row["output_text"]) else "",
+            "expected_label": str(row["expected_label"]) if pd.notna(row["expected_label"]) else "",
         })
     st.session_state["last_experiment"] = {
         "experiment_name": f"Run #{selected_run_id} — {selected.iloc[0]['task_name']}",
