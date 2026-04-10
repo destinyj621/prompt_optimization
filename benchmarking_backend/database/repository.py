@@ -53,7 +53,7 @@ class BenchmarkRepository:
 
     def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
         return self._fetch_one(
-            "SELECT task_id, task_name, task_description, expected_output FROM tasks WHERE task_id = %s",
+            "SELECT task_id, task_name, task_description FROM tasks WHERE task_id = %s",
             (task_id,),
         )
 
@@ -93,24 +93,38 @@ class BenchmarkRepository:
 
     def list_dataset_inputs(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         if limit is None:
-            return self._fetch_all("SELECT input_id, input_text FROM dataset_inputs ORDER BY input_id", ())
+            return self._fetch_all(
+                "SELECT input_id, input_text, expected_label FROM dataset_inputs ORDER BY input_id",
+                (),
+            )
         return self._fetch_all(
-            "SELECT input_id, input_text FROM dataset_inputs ORDER BY input_id LIMIT %s",
+            "SELECT input_id, input_text, expected_label FROM dataset_inputs ORDER BY input_id LIMIT %s",
             (limit,),
         )
 
     def get_dataset_input(self, input_id: int) -> Optional[Dict[str, Any]]:
         return self._fetch_one(
-            "SELECT input_id, input_text FROM dataset_inputs WHERE input_id = %s",
+            "SELECT input_id, input_text, expected_label FROM dataset_inputs WHERE input_id = %s",
             (input_id,),
         )
 
-    def insert_dataset_input(self, input_text: str) -> int:
+    def insert_dataset_input(self, input_text: str, expected_label: str = "", dataset_name: str = "runtime_inputs") -> int:
         self._ensure_connection()
         assert self.connection is not None
 
         cursor = self.connection.cursor()
-        cursor.execute("INSERT INTO dataset_inputs (input_text) VALUES (%s)", (input_text,))
+
+        cursor.execute(
+            """
+            INSERT INTO dataset_inputs (dataset_name, input_text, expected_label)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                expected_label = VALUES(expected_label),
+                input_id = LAST_INSERT_ID(input_id)
+            """,
+            (dataset_name, input_text, expected_label.strip()),
+        )
+
         self.connection.commit()
         input_id = int(cursor.lastrowid)
         cursor.close()
@@ -178,6 +192,7 @@ class BenchmarkRepository:
             "schema_compliance_percent",
             "quality_score",
             "output_text",
+            "expected_label",
             "experiment_run_id", #added this
         ]
 
@@ -202,6 +217,7 @@ class BenchmarkRepository:
             """
             SELECT
                 experiment_run_id,
+                er.task_id,
                 MIN(er.run_id) AS first_run_id,
                 MAX(rt.run_date) AS run_date,
                 MAX(rt.run_time) AS run_time,
@@ -221,6 +237,7 @@ class BenchmarkRepository:
                 """
                 SELECT
                     er.run_id,
+                    er.task_id,
                     rt.run_date,
                     rt.run_time,
                     t.task_name,
@@ -267,7 +284,8 @@ class BenchmarkRepository:
                     AVG(er.quality_score)               AS quality_score,
                     AVG(er.throughput_tokens_per_sec)   AS throughput_tokens_per_sec,
                     AVG(er.energy_cost)                 AS energy_cost,
-                    MAX(er.output_text)                 AS output_text
+                    MAX(er.output_text)                 AS output_text,
+                    MAX(er.expected_label)              AS expected_label
                 FROM experiment_runs er
                 JOIN prompt_strategies ps ON er.strategy_id = ps.strategy_id
                 JOIN models m ON er.model_id = m.model_id
@@ -279,6 +297,7 @@ class BenchmarkRepository:
             result.append({
                 "run_id":i,
                 "experiment_run_id":exp_id,
+                "task_id": int(group["task_id"]),
                 "run_date": str(group["run_date"]),
                 "run_time": str(group["run_time"]),
                 "task_name": group["task_name"],

@@ -143,7 +143,7 @@ def main() -> None:
             strategy_type=strategy.get("strategy_type") or "",
         )
 
-        input_id = repository.insert_dataset_input(input_text=input_text)
+        input_id = repository.insert_dataset_input(input_text=input_text, expected_label="")
 
         result = runner.run_experiment(
             task_id=task_id,

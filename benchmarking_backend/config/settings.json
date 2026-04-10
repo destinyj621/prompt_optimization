@@ -6,10 +6,40 @@
     "hardware_hourly_cost": 1.5,
     "carbon_kg_per_kwh": 0.4
   },
+
   "benchmark": {
+    "task": "sentiment_classification",
+    "evaluation_metric": "accuracy",
+    "labels": ["positive", "negative", "neutral"],
     "default_batch_size": 1,
     "repetition_count": 3
   },
+
+  "dataset": {
+    "examples": [
+      {
+        "text": "I absolutely love this product, it works perfectly.",
+        "label": "positive"
+      },
+      {
+        "text": "This is the worst purchase I have ever made.",
+        "label": "negative"
+      },
+      {
+        "text": "The product is okay, nothing special.",
+        "label": "neutral"
+      },
+      {
+        "text": "Customer service was amazing and very helpful.",
+        "label": "positive"
+      },
+      {
+        "text": "The app crashes constantly and is very frustrating.",
+        "label": "negative"
+      }
+    ]
+  },
+
   "database": {
     "host": "localhost",
     "port": 3306,
@@ -17,7 +47,16 @@
     "password": "",
     "name": "prompt_benchmark"
   },
+
+  
+
   "models": {
+    "defaults": {
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "max_tokens": 256
+    },
+
     "available_model_names": [
       "llama3.1:8b",
       "mistral",
@@ -25,77 +64,68 @@
       "phi3",
       "llama3.1:3b"
     ],
-    "defaults": {
-      "temperature": 0.2,
-      "top_p": 0.9,
-      "max_tokens": 256
-    },
+
     "token_limits": {
       "prompt_max_tokens": 4096,
       "completion_max_tokens": 1024,
       "total_max_tokens": 8192
     },
+
     "ollama": {
       "base_url": "http://localhost:11434",
       "command": "ollama"
     }
   },
+
   "prompting": {
     "example_required_task_keywords": [
-      "structured extraction",
-      "classification",
-      "reasoning"
+      "classification"
     ],
+
     "example_required_strategy_types": [
-      "few-shot",
-      "format constrained",
-      "format-constrained",
-      "structured"
+      "few-shot"
     ],
+
+    "output_format": {
+      "type": "single_label",
+      "allowed_labels": ["positive", "negative", "neutral"],
+      "return_only_label": true
+    },
+
     "example_library": {
       "few-shot": [
         {
-          "example_input": "Text: Climate change is accelerating due to emissions.",
-          "example_output": "Summary: Climate change is worsening because of emissions.",
+          "example_input": "Text: I love the new design of this phone.",
+          "example_output": "Label: positive",
           "example_order": 1
         },
         {
-          "example_input": "Text: Recycling reduces landfill waste and saves energy.",
-          "example_output": "Summary: Recycling lowers waste and conserves energy.",
+          "example_input": "Text: The service was terrible and very slow.",
+          "example_output": "Label: negative",
           "example_order": 2
-        }
-      ],
-      "format constrained": [
+        },
         {
-          "example_input": "Review: The phone is fast but battery is average.",
-          "example_output": "{\"sentiment\":\"neutral\",\"pros\":[\"fast\"],\"cons\":[\"average battery\"]}",
-          "example_order": 1
+          "example_input": "Text: The experience was fine, nothing impressive.",
+          "example_output": "Label: neutral",
+          "example_order": 3
         }
       ],
-      "structured extraction": [
-        {
-          "example_input": "Patient: John Doe, age 45, diagnosed with hypertension.",
-          "example_output": "{\"name\":\"John Doe\",\"age\":45,\"diagnosis\":\"hypertension\"}",
-          "example_order": 1
-        }
-      ],
+
       "classification": [
         {
-          "example_input": "Email: You won a free prize! Click now!",
-          "example_output": "Label: spam",
+          "example_input": "Text: This restaurant was amazing!",
+          "example_output": "Label: positive",
           "example_order": 1
         },
         {
-          "example_input": "Email: Team meeting moved to 3 PM.",
-          "example_output": "Label: not_spam",
+          "example_input": "Text: The product broke after one day.",
+          "example_output": "Label: negative",
           "example_order": 2
-        }
-      ],
-      "reasoning": [
+        },
         {
-          "example_input": "If all A are B and all B are C, are all A C?",
-          "example_output": "Yes. Since A subset B and B subset C, A subset C.",
-          "example_order": 1
+          "example_input": "Text: The movie was okay, not great but not bad.",
+          "example_output": "Label: neutral",
+          "example_order": 3
         }
       ]
     }

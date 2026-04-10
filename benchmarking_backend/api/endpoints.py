@@ -2,13 +2,57 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from benchmarking_backend.config import CONFIG
 from benchmarking_backend.database.repository import BenchmarkRepository
 from benchmarking_backend.database.schema import ensure_schema_compat, initialize_schema
 from benchmarking_backend.evaluation import AccuracyEvaluator
+from benchmarking_backend.evaluation.text_quality import TextQualityEvaluator
 from benchmarking_backend.experiments import ExperimentRunner, MetricCollector, ModelExecutor, PromptBuilder
+
+
+def _requires_examples(task_name: str, strategy_type: str) -> bool:
+    task = task_name.strip().lower()
+    strategy = strategy_type.strip().lower()
+    strategy_requires = strategy in CONFIG.prompting.example_required_strategy_types
+    task_requires = any(keyword in task for keyword in CONFIG.prompting.example_required_task_keywords)
+    return strategy_requires or task_requires
+
+
+def _resolve_runtime_examples(
+    task: Dict[str, Any],
+    strategy: Dict[str, Any],
+    payload: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    payload_examples = payload.get("runtime_examples")
+    if isinstance(payload_examples, list) and payload_examples:
+        return payload_examples
+
+    task_name = str(task.get("task_name") or "")
+    strategy_type = str(strategy.get("strategy_type") or "")
+    strategy_key = strategy_type.strip().lower()
+    task_key = task_name.strip().lower()
+
+    if strategy_key in CONFIG.prompting.example_library:
+        return CONFIG.prompting.example_library[strategy_key]
+
+    for keyword in CONFIG.prompting.example_required_task_keywords:
+        if keyword in task_key and keyword in CONFIG.prompting.example_library:
+            return CONFIG.prompting.example_library[keyword]
+
+    if _requires_examples(task_name=task_name, strategy_type=strategy_type):
+        return []
+
+    return []
+
+
+def _resolve_prompt_config(payload: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        "system_prompt": str(payload.get("system_prompt") or "").strip(),
+        "instruction_prompt": str(payload.get("instruction_prompt") or "").strip(),
+        "context": str(payload.get("context") or "").strip(),
+    }
 
 
 def _build_repository() -> BenchmarkRepository:
@@ -74,19 +118,31 @@ def run_experiment_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
     if run_count < 1:
         raise ValueError("run_count must be at least 1.")
 
+    input_id_raw = payload.get("input_id")
     input_text: Optional[str] = payload.get("input_text")
     if input_text is None:
         input_text = payload.get("raw_input")
-    input_id_raw = payload.get("input_id")
+    expected_label = str(payload.get("expected_label", "") or "").strip()
 
     experiment_run_id: Optional[str]= payload.get("experiment_run_id") #added this
     repository = _build_repository()
     try:
+        task = repository.get_task(task_id)
+        if not task:
+            raise ValueError(f"Task ID {task_id} not found.")
+
+        strategy = repository.get_strategy(strategy_id)
+        if not strategy:
+            raise ValueError(f"Strategy ID {strategy_id} not found.")
+
         input_id: Optional[int]
-        if input_text is not None and str(input_text).strip():
-            input_id = repository.insert_dataset_input(input_text=str(input_text).strip())
-        elif input_id_raw is not None:
+        if input_id_raw is not None:
             input_id = int(input_id_raw)
+        elif input_text is not None and str(input_text).strip():
+            input_id = repository.insert_dataset_input(
+                input_text=str(input_text).strip(),
+                expected_label=expected_label,
+            )
         else:
             input_id = None
 
@@ -96,6 +152,7 @@ def run_experiment_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
             metric_collector=MetricCollector(),
             prompt_builder=PromptBuilder(),
             accuracy_evaluator=AccuracyEvaluator(),
+            text_quality_evaluator= TextQualityEvaluator(),
         )
 
         result = runner.run_experiment(
@@ -104,7 +161,10 @@ def run_experiment_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
             model_id=model_id,
             trials_per_input=max(1, run_count),
             input_id=input_id,
+            runtime_examples=_resolve_runtime_examples(task=task, strategy=strategy, payload=payload),
+            prompt_config=_resolve_prompt_config(payload),
             experiment_run_id=experiment_run_id, #added this
+            expected_label_override=expected_label or None,
         )
         return result
     finally:

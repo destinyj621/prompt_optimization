@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     task_id INT AUTO_INCREMENT PRIMARY KEY,
     task_name VARCHAR(255) NOT NULL,
     task_description TEXT,
-    expected_output TEXT,
     UNIQUE KEY uq_tasks_name (task_name)
 ) ENGINE=InnoDB;
 
@@ -21,7 +20,10 @@ CREATE TABLE IF NOT EXISTS prompt_strategies (
 
 CREATE TABLE IF NOT EXISTS dataset_inputs (
     input_id INT AUTO_INCREMENT PRIMARY KEY,
-    input_text MEDIUMTEXT NOT NULL
+    dataset_name VARCHAR(255) NOT NULL DEFAULT 'default_dataset',
+    input_text MEDIUMTEXT NOT NULL,
+    expected_label VARCHAR(50) NOT NULL DEFAULT '',
+    UNIQUE KEY uq_dataset_entry (dataset_name, input_text(255))
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS models (
@@ -45,7 +47,7 @@ CREATE TABLE IF NOT EXISTS experiment_runs (
     model_id INT NOT NULL,
     input_id INT NOT NULL,
     time_id BIGINT NOT NULL,
-    experiment_run_id VARCHAR(36) NULL, 
+    experiment_run_id VARCHAR(36) NULL,
 
     input_prompt MEDIUMTEXT NOT NULL,
 
@@ -67,20 +69,27 @@ CREATE TABLE IF NOT EXISTS experiment_runs (
     schema_compliance_percent DECIMAL(8,4) NOT NULL,
 
     quality_score DECIMAL(8,4) NOT NULL,
+
+    expected_label VARCHAR(50) NULL,
+    predicted_label VARCHAR(50) NULL,
     output_text MEDIUMTEXT,
 
     CONSTRAINT fk_experiment_runs_task
         FOREIGN KEY (task_id) REFERENCES tasks(task_id)
         ON DELETE RESTRICT ON UPDATE CASCADE,
+
     CONSTRAINT fk_experiment_runs_strategy
         FOREIGN KEY (strategy_id) REFERENCES prompt_strategies(strategy_id)
         ON DELETE RESTRICT ON UPDATE CASCADE,
+
     CONSTRAINT fk_experiment_runs_model
         FOREIGN KEY (model_id) REFERENCES models(model_id)
         ON DELETE RESTRICT ON UPDATE CASCADE,
+
     CONSTRAINT fk_experiment_runs_input
         FOREIGN KEY (input_id) REFERENCES dataset_inputs(input_id)
         ON DELETE RESTRICT ON UPDATE CASCADE,
+
     CONSTRAINT fk_experiment_runs_time
         FOREIGN KEY (time_id) REFERENCES run_times(time_id)
         ON DELETE RESTRICT ON UPDATE CASCADE
@@ -95,39 +104,38 @@ CREATE INDEX idx_experiment_runs_quality_score ON experiment_runs(quality_score)
 CREATE INDEX idx_experiment_runs_accuracy_percent ON experiment_runs(accuracy_percent);
 CREATE INDEX idx_experiment_runs_experiment_run_id ON experiment_runs(experiment_run_id);
 
-INSERT INTO tasks (task_name, task_description, expected_output) VALUES
-    ('Summarization', 'Summarize the given text.', NULL),
-    ('Question Answering', 'Answer the user question.', NULL),
-    ('Classification', 'Classify the input into a category.', NULL),
-    ('Structured Extraction', 'Extract structured fields from unstructured text.', NULL),
-    ('Reasoning', 'Solve the task with explicit reasoning.', NULL)
-ON DUPLICATE KEY UPDATE task_name = VALUES(task_name);
+INSERT IGNORE INTO tasks (task_name, task_description) VALUES
+('Sentiment Classification', 
+'Classify text sentiment as positive, negative, or neutral.'),
+('Summarization',
+'Generate a concise and coherent summary of the provided text.'),
+('Question Answering',
+'Answwer a question using only the provided context or document.');
 
-INSERT INTO prompt_strategies (strategy_name, strategy_type, strategy_template, description) VALUES
-    (
-        'Zero-Shot Baseline',
-        'zero-shot',
-        'Task: {task_name}\nTask Description: {task_description}\nInput: {input_text}\nOutput:',
-        'Direct zero-shot instruction without examples.'
-    ),
-    (
-        'Few-Shot Prompting',
-        'few-shot',
-        'Task: {task_name}\nTask Description: {task_description}\n{examples}\nInput: {input_text}\nOutput:',
-        'Prompt with examples before answering.'
-    ),
-    (
-        'Chain-of-Thought',
-        'reasoning',
-        'Task: {task_name}\nTask Description: {task_description}\nInput: {input_text}\nThink step by step and then answer.\nOutput:',
-        'Encourage stepwise reasoning.'
-    )
-ON DUPLICATE KEY UPDATE strategy_name = VALUES(strategy_name);
+INSERT IGNORE INTO prompt_strategies (strategy_name, strategy_type, strategy_template, description) VALUES
+(
+'Zero-Shot Baseline',
+'zero-shot',
+'Task: {task_name}\nTask Description: {task_description}\nInput: {input_text}\nOutput:',
+'Direct zero-shot instruction without examples.'
+),
+(
+'Few-Shot Prompting',
+'few-shot',
+'Task: {task_name}\nTask Description: {task_description}\n{examples}\nInput: {input_text}\nOutput:',
+'Prompt with examples before answering.'
+);
 
-INSERT INTO models (model_name) VALUES
-    ('llama3.1:8b'),
-    ('mistral'),
-    ('gemma:7b'),
-    ('phi3'),
-    ('llama3.1:3b')
-ON DUPLICATE KEY UPDATE model_name = VALUES(model_name);
+INSERT IGNORE INTO models (model_name) VALUES
+('llama3.1:8b'),
+('mistral'),
+('gemma:7b'),
+('phi3'),
+('llama3.1:3b');
+
+INSERT IGNORE INTO dataset_inputs (dataset_name, input_text, expected_label) VALUES
+('sentiment_test','I absolutely love this product.', 'positive'),
+('sentiment_test','This is the worst purchase I have made.', 'negative'),
+('sentiment_test','The movie was okay, nothing special.', 'neutral'),
+('sentiment_test','Customer service was excellent.', 'positive'),
+('sentiment_test','The app crashes constantly.', 'negative');
