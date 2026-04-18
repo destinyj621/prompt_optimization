@@ -9,6 +9,9 @@ from benchmarking_backend.config import CONFIG
 from benchmarking_backend.database.repository import BenchmarkRepository
 from benchmarking_backend.evaluation import AccuracyEvaluator
 from benchmarking_backend.evaluation.text_quality import TextQualityEvaluator
+from benchmarking_backend.evaluation.summarization_evaluator import SummarizationEvaluator
+from benchmarking_backend.evaluation.qa_evaluator import QAEvaluator
+from benchmarking_backend.evaluation.llm_judge_evaluator import LLMJudgeEvaluator
 
 from .metric_collection import MetricCollector
 from .model_executor import ModelExecutor
@@ -31,6 +34,9 @@ class ExperimentRunner:
         self.prompt_builder = prompt_builder
         self.accuracy_evaluator = accuracy_evaluator
         self.text_quality_evaluator = text_quality_evaluator
+        self.summarization_evaluator = SummarizationEvaluator()
+        self.qa_evaluator = QAEvaluator()
+        self.llm_judge = LLMJudgeEvaluator(model_executor=self.model_executor)
 
     def run_experiment(
         self,
@@ -109,26 +115,51 @@ class ExperimentRunner:
                     prompt_tokens=execution.prompt_tokens,
                     completion_tokens=execution.completion_tokens,
                 ) or {}
-                CLASSIFICATION = {1}
-                SUMMARIZATION = {2}
-                QA = {3}
-                task_id = task["task_id"]
-                if task_id in CLASSIFICATION:
+                # CLASSIFICATION = {1}
+                # SUMMARIZATION = {2}
+                # QA = {3}
+                # task_id = task["task_id"]
+                # if task_id in CLASSIFICATION:
+                #     evaluation = self.accuracy_evaluator.evaluate(
+                #         expected_output=expected_label,
+                #         model_output= execution.output_text,
+                #     )
+                # elif task_id in SUMMARIZATION or task_id in QA:
+                #     evaluation = self.text_quality_evaluator.evaluate(
+                #         execution.output_text
+                #     )
+                # else:
+                #     evaluation = {
+                #         "quality_score": 0.0,
+                #         "accuracy_percent": None,
+                #         "exact_record_match": None,
+                #         "schema_compliance_percent": None,
+                #     }
+                TASK_TYPES = {
+                    "classification": {"Sentiment Classification"},
+                    "summarization": {"Summarization"},
+                    "qa": {"Question Answering"},
+                }
+                task_name = task["task_name"]
+                if task_name in TASK_TYPES["classification"]:
                     evaluation = self.accuracy_evaluator.evaluate(
                         expected_output=expected_label,
                         model_output= execution.output_text,
                     )
-                elif task_id in SUMMARIZATION or task_id in QA:
-                    evaluation = self.text_quality_evaluator.evaluate(
-                        execution.output_text
+                elif task_name in TASK_TYPES["summarization"]:
+                    evaluation= self.llm_judge.evaluate(
+                        task_type="summarization",
+                        input_text= input_text,
+                        reference= input_row.get("reference_summary",""),
+                        prediction= execution.output_text,
                     )
-                else:
-                    evaluation = {
-                        "quality_score": 0.0,
-                        "accuracy_percent": None,
-                        "exact_record_match": None,
-                        "schema_compliance_percent": None,
-                    }
+                elif task_name in TASK_TYPES["qa"]:
+                    evaluation= self.llm_judge.evaluate(
+                        task_type="qa",
+                        input_text=input_text,
+                        reference= input_row.get("expected_answer",""),
+                        prediction= execution.output_text,
+                    )
 
                 evaluation.setdefault("accuracy_percent", 0.0)
                 evaluation.setdefault("field_accuracy_percent", 0.0)

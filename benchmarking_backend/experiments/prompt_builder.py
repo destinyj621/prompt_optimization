@@ -40,14 +40,15 @@ class PromptBuilder:
                     "You are a helpful assistant that summarizes text clearly and concisely.",
                     f"Instructios:\n{instruction_prompt}" if instruction_prompt else None,
                     f"Text to summarize:\n{input_text}",
-                    "Summary:"
+                    "Write a concise summary:"
                 ]if section
             )
         if "question answering" in task_name: #added this
             return "\n\n".join(
                 section for section in [
                     f"System: {system_prompt}" if system_prompt else None,
-                    "Answer the questuin using only the provided context.",
+                    "You are a question answering system. Answer ONLY using the provided context.",
+                    "If the answer is not in the context, say 'Not found in context.'",
                     f"Context:\n{context}" if context else None,
                     f"Question:\n{input_text}",
                     "Answer:"

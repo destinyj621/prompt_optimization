@@ -32,7 +32,105 @@ def _pick_metric(result: dict, *keys: str, default: float | None = None):
                 pass
     return default
 
+with st.expander("Metric Definitions & Calculation Methodology"):
+    st.markdown("""
+### Latency
+**Formula:**  
+Latency (ms) = End Time - Start Time  
 
+---
+### Total Tokens
+**Formula:**  
+Prompt Tokens + Completion Tokens  
+
+---
+### Throughput
+**Tokens/sec:**  
+Total Tokens ÷ Latency (seconds)  
+
+**Requests/sec:**  
+1 ÷ Latency (seconds)
+
+---
+### Energy Consumption (Energy(KWh))
+**Formula:**  
+(GPU Power x Latency) ÷ (1000 x 3600)
+
+---
+### Energy Cost
+**Formula:**  
+Energy (kWh) x Cost per kWh  
+
+---
+### Hardware Cost
+**Formula:**  
+Latency (seconds) ÷ 3600 x Hourly Hardware Cost  
+
+---
+### Carbon Emissions
+**Formula:**  
+Energy (kWh) x kg CO₂ per kWh  
+
+---
+# TASK-SPECIFIC EVALUATION METRICS
+
+## 1. Classification Accuracy
+**Formula:**  
+Accuracy = 100 if predicted label == expected label else 0  
+
+---
+## 2. Summarization Quality (LLM-as-a-Judge)
+
+A judge model evaluates the summary against the original input and reference summary.
+
+### Inputs:
+- Document (input text)
+- Reference summary (if available)
+- Model-generated summary
+
+### Evaluation criteria:
+- factual correctness
+- coverage of key points
+- conciseness
+- clarity
+
+### Output:
+A single score:
+
+
+Quality in [0, 100]
+
+### Final Meaning:
+- 90-100 → excellent summary (fully faithful + complete)
+- 70-89 → good summary (minor omissions)
+- 50-69 → partial coverage or minor hallucinations
+- <50 → poor or incorrect summary
+
+---
+## 3. Question Answering Quality (LLM-as-a-Judge)
+
+A judge model evaluates the answer using:
+
+- correctness
+- completeness
+- grounding in context
+- clarity
+
+### Inputs:
+- Context / passage
+- Expected answer (if available)
+- Model answer
+
+### Output:
+
+Quality in [0, 100]
+
+### Interpretation:
+- 90-100 → fully correct and grounded
+- 70-89 → mostly correct
+- 50-69 → partially correct
+- <50 → incorrect or hallucinated
+""")
 experiment = st.session_state.get("last_experiment")
 if not experiment or not experiment.get("results"):
     st.warning("No experiment selected.")
