@@ -90,7 +90,7 @@ prompt_optimization_new/
 │       ├── metric_collection.py        # Performance metrics
 │       ├── model_executor.py           # Ollama integration
 │       └── prompt_builder.py           # Prompt construction
-└── UI/                                # Streamlit frontend
+└── UI/                                 # Streamlit frontend
     ├── __init__.py
     ├── app.py                          # Main app entry point
     ├── Navigation.py                   # Navigation utilities
