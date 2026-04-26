@@ -98,9 +98,6 @@ class ExperimentRunner:
                     examples=examples,
                     prompt_config=prompt_config,
                 )
-                print("BUILT PROMPT START")
-                print(prompt_text)
-                print("BUILT PROMPT END")
 
                 execution = self.model_executor.execute(
                     prompt_text=prompt_text,

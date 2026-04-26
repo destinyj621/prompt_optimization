@@ -170,6 +170,7 @@ with c2:
                 st.session_state["last_experiment"] = {
                     "experiment_name": experiment_name,
                     "task": selected_task,
+                    "task_id": selected_task["task_id"],
                     "execution_mode": execution_mode,
                     "runs_per_prompt": runs_per_prompt,
                     "variants": st.session_state.variants,

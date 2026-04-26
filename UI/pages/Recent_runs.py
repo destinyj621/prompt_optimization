@@ -93,6 +93,9 @@ if st.button("View Selected Run"):
         })
     st.session_state["last_experiment"] = {
         "experiment_name": f"Run #{selected_run_id} — {selected.iloc[0]['task_name']}",
+        "task_id": int(selected.iloc[0]["task_id"])
+            if pd.notna(selected.iloc[0].get("task_id")) else None,
+        "task_name": str(selected.iloc[0]["task_name"]),
         "results": comparison_results,
     }
 

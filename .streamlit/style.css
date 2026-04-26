@@ -1,0 +1,54 @@
+/* Streamlit Custom Styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.metric-container {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    background-color: #f0f2f6;
+}
+
+.comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.comparison-table th {
+    background-color: #262730;
+    color: white;
+    padding: 0.75rem;
+    text-align: left;
+}
+
+.comparison-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.comparison-table tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+.result-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.result-badge.high {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.result-badge.medium {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.result-badge.low {
+    background-color: #f8d7da;
+    color: #721c24;
+}

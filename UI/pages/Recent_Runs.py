@@ -4,17 +4,14 @@ import streamlit as st
 from ollama_exec import get_recent_runs
 
 st.set_page_config(page_title="Recent Experiments", layout="wide")
-def load_css():
-    with open(".streamlit/style.css") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-load_css()
+
 c1, c2 = st.columns([9, 1])
 with c1:
     st.title("Recent Experiments")
     st.caption("Recent benchmark runs from the database")
 with c2:
     if st.button("New Experiment"):
-        st.switch_page("pages/Experiment_Setup.py")
+        st.switch_page("pages/Experiment_setup.py")
 
 st.divider()
 
@@ -37,7 +34,6 @@ for run in recent_runs:
             "experiment_run_id": run.get("experiment_run_id",""),
             "run_datetime": f"{run.get('run_date')} {run.get('run_time')}",
             "task_name": run.get("task_name", "-"),
-            "task_id": run.get("task_id"),
             "strategy_name": variant.get("strategy_name", "-"),
             "model_name": variant.get("model_name", "-"),
             "latency_ms": variant.get("latency_ms", None),
@@ -47,7 +43,6 @@ for run in recent_runs:
             "throughput_tokens_per_sec": variant.get("throughput_tokens_per_sec", None),
             "energy_cost": variant.get("energy_cost", None),
             "output_text": variant.get("output_text",""),
-            "expected_label": variant.get("expected_label", ""),
         })
 
 df = pd.DataFrame(rows)
@@ -70,7 +65,6 @@ show_cols = [
     "run_id",
     "run_datetime",
     "task_name",
-    "task_id",
     "strategy_name",
     "model_name",
     "latency_ms",
@@ -81,7 +75,7 @@ show_cols = [
 st.dataframe(df[show_cols], use_container_width=True, height=420)
 
 unique_run_ids= df["run_id"].unique().tolist()
-selected_run_id = st.selectbox("Select run ID to inspect", unique_run_ids)  
+selected_run_id = st.selectbox("Select run ID to inspect", unique_run_ids)
 
 if st.button("View Selected Run"):
     selected = df[df["run_id"] == selected_run_id]
@@ -89,19 +83,19 @@ if st.button("View Selected Run"):
     for _, row in selected.iterrows():
         comparison_results.append({
             "variant": str(row["strategy_name"]) if pd.notna(row["strategy_name"]) else "Unknown Variant",
-            "energy_cost": float(row["energy_cost"] or 0) if pd.notna(row["energy_cost"]) else 0.0,
+            "cost": float(row["energy_cost"] or 0) if pd.notna(row["energy_cost"]) else 0.0,
             "latency": float(row["latency_ms"]) if pd.notna(row["latency_ms"]) else 0.0,
             "tokens": int(row["total_tokens"]) if pd.notna(row["total_tokens"]) else 0,
             "quality": float(row["quality_score"]) if pd.notna(row["quality_score"]) else 0.0,
-            "accuracy": float(row["accuracy_percent"]) if pd.notna(row["accuracy_percent"]) else 0.0,
-            "throughput": float(row["throughput_tokens_per_sec"]) if pd.notna(row["throughput_tokens_per_sec"]) else 0.0,
+            "variance": 0.0,
+            "efficiency": float(row["throughput_tokens_per_sec"]) if pd.notna(row["throughput_tokens_per_sec"]) else 0.0,
             "output_text": str(row["output_text"]) if pd.notna(row["output_text"]) else "",
-            "expected_label": str(row["expected_label"]) if pd.notna(row["expected_label"]) else "",
         })
     st.session_state["last_experiment"] = {
         "experiment_name": f"Run #{selected_run_id} — {selected.iloc[0]['task_name']}",
-        "task_name": selected.iloc[0]["task_name"],
-        "task_id": int(selected.iloc[0]["task_id"]),
+        "task_id": int(selected.iloc[0]["task_id"])
+            if pd.notna(selected.iloc[0].get("task_id")) else None,
+        "task_name": str(selected.iloc[0]["task_name"]),
         "results": comparison_results,
     }
 

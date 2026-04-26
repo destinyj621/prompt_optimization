@@ -1,6 +1,12 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import re
+
+def _strip_ansi_codes(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', text)
 
 TASK_METRICS = {
     1: {
@@ -138,11 +144,15 @@ if not experiment or not experiment.get("results"):
 
 raw_results = experiment["results"]
 
-task_id = experiment.get("task_id")
-assert isinstance(task_id, int), f"Invalid task_id: {task_id}"
-task_cfg = TASK_METRICS.get(task_id,{})
-SHOW_ACCURACY = task_cfg.get("show_accuracy",False)
-SHOW_QUALITY = task_cfg.get("show_quality", False)
+task_id = experiment.get("task_id") or (experiment.get("task", {}).get("task_id") if experiment.get("task") else None)
+if isinstance(task_id, int):
+    task_cfg = TASK_METRICS.get(task_id,{})
+    SHOW_ACCURACY = task_cfg.get("show_accuracy", False)
+    SHOW_QUALITY = task_cfg.get("show_quality", False)
+else:
+    task_cfg = {}
+    SHOW_ACCURACY = False
+    SHOW_QUALITY = False
 results = []
 for result in raw_results:
     results.append(
@@ -160,11 +170,20 @@ for result in raw_results:
         }
     )
 
+if not isinstance(task_id, int):
+    if any(item.get("accuracy") is not None for item in results):
+        SHOW_ACCURACY = True
+    if any(item.get("quality") is not None for item in results):
+        SHOW_QUALITY = True
+
+
 df = pd.DataFrame(results)
+drop_cols = ["output_text", "expected_label", "run_records"]
 if not SHOW_ACCURACY:
-    table_df = df.drop(columns=["output_text", "expected_label", "run_records", "accuracy"], errors="ignore")
+    drop_cols.append("accuracy")
 if not SHOW_QUALITY:
-        table_df = df.drop(columns=["output_text", "expected_label", "run_records", "quality"], errors="ignore")
+    drop_cols.append("quality")
+table_df = df.drop(columns=drop_cols, errors="ignore")
 
 
 def highlight_best(column: pd.Series) -> list[str]:
@@ -176,44 +195,52 @@ def highlight_best(column: pd.Series) -> list[str]:
 
 
 def render_summary_cards() -> None:
+    def _best_variant(column: pd.Series, minimize: bool = False) -> str:
+        if column.empty or column.dropna().empty:
+            return "N/A"
+        idx = column.idxmin() if minimize else column.idxmax()
+        if pd.isna(idx) or idx not in df.index:
+            return "N/A"
+        return str(df.loc[idx, "variant"])
+
     c1, c2, c3, c4, c5 = st.columns(5)
     if SHOW_ACCURACY:
         with c1:
             st.metric(
                 "Best Accuracy",
-                f"{df['accuracy'].max():.1f}%",
-                df.loc[df["accuracy"].idxmax(), "variant"],
+                f"{df['accuracy'].max():.1f}%" if df["accuracy"].dropna().any() else "N/A",
+                _best_variant(df["accuracy"]),
             )
     if SHOW_QUALITY:
         with c1:
             st.metric(
                 "Best Quality",
-                f"{df['quality'].max():.1f}%",
-                df.loc[df["quality"].idxmax(), "variant"],
+                f"{df['quality'].max():.1f}%" if df["quality"].dropna().any() else "N/A",
+                _best_variant(df["quality"]),
             )
     with c2:
         st.metric(
             "Lowest Energy ",
-            f"{df['energy_cost'].min():.4f} kWh",
-            df.loc[df["energy_cost"].idxmin(), "variant"],
+            f"{df['energy_cost'].min():.4f} kWh" if df["energy_cost"].dropna().any() else "N/A",
+            _best_variant(df["energy_cost"], minimize=True),
         )
     with c3:
         st.metric(
             "Fastest",
-            f"{df['latency'].min():.0f} ms",
-            df.loc[df["latency"].idxmin(), "variant"],
+            f"{df['latency'].min():.0f} ms" if df["latency"].dropna().any() else "N/A",
+            _best_variant(df["latency"], minimize=True),
         )
     with c4:
         st.metric(
             "Best Throughput",
-            f"{df['throughput'].max():.1f}",
-            df.loc[df["throughput"].idxmax(), "variant"],
+            f"{df['throughput'].max():.1f}" if df["throughput"].dropna().any() else "N/A",
+            _best_variant(df["throughput"]),
         )
     with c5:
         st.metric(
             "Lowest Tokens",
-            f"{df['tokens'].min():.0f}",
-            df.loc[df["tokens"].idxmin(), "variant"],
+            f"{df['tokens'].min():.0f}" if df["tokens"].dropna().any() else "N/A",
+            _best_variant(df["tokens"], minimize=True),
         )
 
 
@@ -294,8 +321,10 @@ with c1:
                 if output or expected:
                     with st.expander(f"Output - {variant}"):
                         if expected:
+                            expected = _strip_ansi_codes(expected)
                             st.markdown(f"**Expected:** {expected}")
                         if output:
+                            output = _strip_ansi_codes(output)
                             st.markdown(f"**Predicted:** {output}")
 
     with tab_table:
