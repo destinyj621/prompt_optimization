@@ -1,0 +1,171 @@
+"""Thin backend endpoints for frontend integration."""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+from benchmarking_backend.config import CONFIG
+from benchmarking_backend.database.repository import BenchmarkRepository
+from benchmarking_backend.database.schema import ensure_schema_compat, initialize_schema
+from benchmarking_backend.evaluation import AccuracyEvaluator
+from benchmarking_backend.evaluation.text_quality import TextQualityEvaluator
+from benchmarking_backend.experiments import ExperimentRunner, MetricCollector, ModelExecutor, PromptBuilder
+
+
+def _requires_examples(task_name: str, strategy_type: str) -> bool:
+    task = task_name.strip().lower()
+    strategy = strategy_type.strip().lower()
+    strategy_requires = strategy in CONFIG.prompting.example_required_strategy_types
+    task_requires = any(keyword in task for keyword in CONFIG.prompting.example_required_task_keywords)
+    return strategy_requires or task_requires
+
+
+def _resolve_runtime_examples(
+    task: Dict[str, Any],
+    strategy: Dict[str, Any],
+    payload: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    payload_examples = payload.get("runtime_examples")
+    if isinstance(payload_examples, list) and payload_examples:
+        return payload_examples
+
+    task_name = str(task.get("task_name") or "")
+    strategy_type = str(strategy.get("strategy_type") or "")
+    strategy_key = strategy_type.strip().lower()
+    task_key = task_name.strip().lower()
+
+    if strategy_key in CONFIG.prompting.example_library:
+        return CONFIG.prompting.example_library[strategy_key]
+
+    for keyword in CONFIG.prompting.example_required_task_keywords:
+        if keyword in task_key and keyword in CONFIG.prompting.example_library:
+            return CONFIG.prompting.example_library[keyword]
+
+    if _requires_examples(task_name=task_name, strategy_type=strategy_type):
+        return []
+
+    return []
+
+
+def _resolve_prompt_config(payload: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        "system_prompt": str(payload.get("system_prompt") or "").strip(),
+        "instruction_prompt": str(payload.get("instruction_prompt") or "").strip(),
+        "context": str(payload.get("context") or "").strip(),
+    }
+
+
+def _build_repository() -> BenchmarkRepository:
+    repository = BenchmarkRepository()
+    repository.connect()
+    assert repository.connection is not None
+    initialize_schema(repository.connection)
+    ensure_schema_compat(repository.connection)
+    repository.ensure_models(CONFIG.models.available_model_names)
+    return repository
+
+
+def get_tasks_endpoint() -> Dict[str, Any]:
+    repository = _build_repository()
+    try:
+        return {"tasks": repository.list_tasks()}
+    finally:
+        repository.close()
+
+
+def get_strategies_endpoint() -> Dict[str, Any]:
+    repository = _build_repository()
+    try:
+        return {"strategies": repository.list_strategies()}
+    finally:
+        repository.close()
+
+
+def get_models_endpoint() -> Dict[str, Any]:
+    repository = _build_repository()
+    try:
+        return {"models": repository.list_models()}
+    finally:
+        repository.close()
+
+
+def get_dataset_inputs_endpoint(limit: int | None = None) -> Dict[str, Any]:
+    repository = _build_repository()
+    try:
+        safe_limit = None if limit is None else max(1, int(limit))
+        return {"dataset_inputs": repository.list_dataset_inputs(limit=safe_limit)}
+    finally:
+        repository.close()
+
+
+def get_recent_runs_endpoint(limit: int | None = 50) -> Dict[str, Any]:
+    repository = _build_repository()
+    try:
+        safe_limit = 50 if limit is None else max(1, int(limit))
+        return {"recent_runs": repository.list_recent_runs(limit=safe_limit)}
+    finally:
+        repository.close()
+
+
+def run_experiment_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if "task_id" not in payload or "strategy_id" not in payload or "model_id" not in payload:
+        raise ValueError("task_id, strategy_id, and model_id are required.")
+
+    task_id = int(payload["task_id"])
+    strategy_id = int(payload["strategy_id"])
+    model_id = int(payload["model_id"])
+    run_count = int(payload.get("run_count", CONFIG.benchmark.repetition_count))
+    if run_count < 1:
+        raise ValueError("run_count must be at least 1.")
+
+    input_id_raw = payload.get("input_id")
+    input_text: Optional[str] = payload.get("input_text")
+    if input_text is None:
+        input_text = payload.get("raw_input")
+    expected_label = str(payload.get("expected_label", "") or "").strip()
+
+    experiment_run_id: Optional[str]= payload.get("experiment_run_id") #added this
+    repository = _build_repository()
+    try:
+        task = repository.get_task(task_id)
+        if not task:
+            raise ValueError(f"Task ID {task_id} not found.")
+
+        strategy = repository.get_strategy(strategy_id)
+        if not strategy:
+            raise ValueError(f"Strategy ID {strategy_id} not found.")
+
+        input_id: Optional[int]
+        if input_id_raw is not None:
+            input_id = int(input_id_raw)
+        elif input_text is not None and str(input_text).strip():
+            input_id = repository.insert_dataset_input(
+                input_text=str(input_text).strip(),
+                expected_label=expected_label,
+            )
+        else:
+            input_id = None
+
+        runner = ExperimentRunner(
+            repository=repository,
+            model_executor=ModelExecutor(),
+            metric_collector=MetricCollector(),
+            prompt_builder=PromptBuilder(),
+            accuracy_evaluator=AccuracyEvaluator(),
+            text_quality_evaluator= TextQualityEvaluator(),
+        )
+
+        result = runner.run_experiment(
+            task_id=task_id,
+            strategy_id=strategy_id,
+            model_id=model_id,
+            trials_per_input=max(1, run_count),
+            input_id=input_id,
+            runtime_examples=_resolve_runtime_examples(task=task, strategy=strategy, payload=payload),
+            prompt_config=_resolve_prompt_config(payload),
+            experiment_run_id=experiment_run_id, #added this
+            expected_label_override=expected_label or None,
+        )
+        return result
+    finally:
+        repository.close()
