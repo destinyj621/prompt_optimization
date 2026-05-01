@@ -14,7 +14,7 @@ def init_database():
         conn = mysql.connector.connect(
             host="localhost",
             user="root",
-            password="destiny"
+            password=""
         )
         
         cursor = conn.cursor()
