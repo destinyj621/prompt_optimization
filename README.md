@@ -52,14 +52,15 @@ For each run, the system:
 ## Project Structure
 
 ```
-prompt_optimization_new/
+prompt_optimization/
 ├── README.md                           # This file
 ├── requirements.txt                    # Python dependencies
 ├── create_prompt_benchmark_schema.sql  # MySQL database schema
+├── init_database.py                    # Database initialization script
 ├── test_input.csv                      # Sample test data
-├── test_input.xlsx                     # Additional test data
-├── .streamlit/                         # Streamlit configuration
-│   └── style.css                       # Custom UI styling
+├── assets/                             # Static assets
+│   ├── style.css                       # Custom UI styling
+│   └── images/                         # Images
 ├── benchmarking_backend/               # Python backend
 │   ├── __init__.py
 │   ├── main.py                         # CLI entry point
@@ -101,6 +102,24 @@ prompt_optimization_new/
         └── Recent_runs.py              # Historical runs browser
 ```
 
+## Quick Start
+
+### 1) Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 2) Initialize Database
+```bash
+python init_database.py
+```
+
+This will:
+- Create the `prompt_benchmark` database
+- Create all required tables
+- Load initial tasks, strategies, and models
+```
+
 ## Required Services
 
 ### 1) MySQL Database
@@ -114,12 +133,9 @@ The app requires MySQL for storing experiments, results, and metadata.
 - Password: ``
 - Database: `prompt_benchmark`
 
-**Setup MySQL:**
-```bash
-# Install MySQL if not already installed
-# Start MySQL service
-mysql -u root -p < create_prompt_benchmark_schema.sql
-```
+**Setup:**
+- Ensure MySQL is installed and running
+- Run `python init_database.py` to initialize the schema
 
 ### 2) Ollama with Models
 
@@ -159,10 +175,13 @@ ollama list
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd prompt_optimization_new
+cd prompt_optimization
 
 # Install Python packages
 pip install -r requirements.txt
+
+# Initialize the database
+python init_database.py
 ```
 
 ## Configuration
@@ -209,7 +228,7 @@ All runtime configuration is in `benchmarking_backend/config/settings.json`:
 
 ### Start the Application
 ```bash
-streamlit run UI/app.py
+streamlit run UI/Navigation.py
 ```
 
 This opens the web interface at `http://localhost:8501`
